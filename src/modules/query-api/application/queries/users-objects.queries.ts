@@ -1,8 +1,10 @@
 import {
+  paginatedFeedPostsSchema,
   paginatedUserFollowListSchema,
   resolveNestedResponseSchema,
   resolveObjectResponseSchema,
   userProfileSchema,
+  type PaginatedFeedPosts,
   type UserProfile,
 } from '../../domain/api-responses.schema';
 import { queryApiFetch } from '../../infrastructure/query-api.client';
@@ -49,4 +51,25 @@ export async function fetchObjectFollowers(
     },
     signal,
   });
+}
+
+export async function fetchObjectPosts(
+  objectId: string,
+  body: { limit?: number; cursor?: string; currency?: string } = {},
+  signal?: AbortSignal,
+) {
+  const encoded = encodeURIComponent(objectId);
+  return queryApiFetch<PaginatedFeedPosts>(
+    `/objects/${encoded}/posts`,
+    paginatedFeedPostsSchema,
+    {
+      method: 'POST',
+      body: {
+        limit: body.limit ?? 15,
+        cursor: body.cursor,
+        currency: body.currency ?? 'USD',
+      },
+      signal,
+    },
+  );
 }

@@ -34,8 +34,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const facade = getWalletFacade();
     facade.hydrateFromStorage();
-    setUsername(facade.getUsername());
-    return subscribeToKeychainAvailability(setKeychainAvailable);
+    const timer = setTimeout(() => {
+      setUsername(facade.getUsername());
+    }, 0);
+    const unsubscribe = subscribeToKeychainAvailability(setKeychainAvailable);
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

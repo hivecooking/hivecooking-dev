@@ -34,7 +34,7 @@ jobs:
       - name: Build static export
         run: pnpm build
         env:
-          NEXT_PUBLIC_QUERY_API_URL: ${{ vars.QUERY_API_URL || 'https://waiviodev.com' }}
+          NEXT_PUBLIC_QUERY_API_URL: ${{ vars.QUERY_API_URL || 'https://api.hivecooking.com' }}
           NEXT_PUBLIC_BASE_PATH: ${{ vars.BASE_PATH || '' }}
           NEXT_PUBLIC_ODL_NETWORK: ${{ vars.ODL_NETWORK || 'odl-testnet' }}
           NEXT_PUBLIC_HIVE_CUSTOM_JSON_ID: ${{ vars.HIVE_CUSTOM_JSON_ID || 'odl-testnet' }}

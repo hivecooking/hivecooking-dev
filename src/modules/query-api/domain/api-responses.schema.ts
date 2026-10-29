@@ -104,12 +104,83 @@ export const hiveWalletResponseSchema = z.object({
 
 export type HiveWalletResponse = z.infer<typeof hiveWalletResponseSchema>;
 
-export const singlePostSchema = z.object({
-  authorName: z.string(),
+export const postRewardSchema = z
+  .object({
+    amount: z.number().optional(),
+    currency: z.string().optional(),
+    label: z.string().optional(),
+    phase: z.string().optional(),
+  })
+  .nullable()
+  .optional();
+
+export const postAuthorProfileSchema = z
+  .object({
+    name: z.string(),
+    displayName: z.string().nullable().optional(),
+    avatarUrl: z.string().nullable().optional(),
+    reputation: z.number().optional(),
+  })
+  .nullable()
+  .optional();
+
+export const postVotesSummarySchema = z
+  .object({
+    totalCount: z.number().int().optional(),
+    previewVoters: z.array(z.string()).optional(),
+    voted: z.boolean().optional(),
+  })
+  .nullable()
+  .optional();
+
+export const feedPostItemSchema = z.object({
+  id: z.string().optional(),
+  author: z.string(),
   permlink: z.string(),
-  title: z.string().optional(),
-  body: z.string().optional(),
+  title: z.string().nullable().optional(),
+  excerpt: z.string().nullable().optional(),
+  body: z.string().nullable().optional(),
   createdAt: z.string().optional(),
+  feedAt: z.string().optional(),
+  children: z.number().int().optional(),
+  pendingPayout: z.string().optional(),
+  totalPayout: z.string().optional(),
+  reward: postRewardSchema,
+  thumbnailUrl: z.string().nullable().optional(),
+  videoThumbnailUrl: z.string().nullable().optional(),
+  videoEmbedUrl: z.string().nullable().optional(),
+  authorProfile: postAuthorProfileSchema,
+  votes: postVotesSummarySchema,
+  objects: z.array(projectedObjectWithCountsSchema).optional(),
+});
+
+export type FeedPostItem = z.infer<typeof feedPostItemSchema>;
+
+export const paginatedFeedPostsSchema = z.object({
+  items: z.array(feedPostItemSchema),
+  cursor: z.string().nullable().optional(),
+  hasMore: z.boolean().optional(),
+});
+
+export type PaginatedFeedPosts = z.infer<typeof paginatedFeedPostsSchema>;
+
+export const singlePostSchema = z.object({
+  id: z.string().optional(),
+  author: z.string().optional(),
+  authorName: z.string().optional(),
+  permlink: z.string(),
+  title: z.string().nullable().optional(),
+  excerpt: z.string().nullable().optional(),
+  body: z.string().nullable().optional(),
+  createdAt: z.string().optional(),
+  children: z.number().int().optional(),
+  reward: postRewardSchema,
+  thumbnailUrl: z.string().nullable().optional(),
+  videoThumbnailUrl: z.string().nullable().optional(),
+  videoEmbedUrl: z.string().nullable().optional(),
+  authorProfile: postAuthorProfileSchema,
+  votes: postVotesSummarySchema,
+  objects: z.array(projectedObjectWithCountsSchema).optional(),
 });
 
 export type SinglePost = z.infer<typeof singlePostSchema>;
