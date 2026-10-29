@@ -34,10 +34,13 @@ jobs:
       - name: Build static export
         run: pnpm build
         env:
-          NEXT_PUBLIC_QUERY_API_URL: ${{ vars.QUERY_API_URL || 'https://your-query-api.example.com' }}
-          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
-          NEXT_PUBLIC_ODL_NETWORK: ${{ vars.ODL_NETWORK || 'odl-mainnet' }}
-          NEXT_PUBLIC_HIVE_CUSTOM_JSON_ID: ${{ vars.HIVE_CUSTOM_JSON_ID || 'odl-mainnet' }}
+          NEXT_PUBLIC_QUERY_API_URL: ${{ vars.QUERY_API_URL || 'https://waiviodev.com' }}
+          NEXT_PUBLIC_BASE_PATH: ${{ vars.BASE_PATH || '' }}
+          NEXT_PUBLIC_ODL_NETWORK: ${{ vars.ODL_NETWORK || 'odl-testnet' }}
+          NEXT_PUBLIC_HIVE_CUSTOM_JSON_ID: ${{ vars.HIVE_CUSTOM_JSON_ID || 'odl-testnet' }}
+          NEXT_PUBLIC_GOVERNANCE_OBJECT_ID: ${{ vars.GOVERNANCE_OBJECT_ID || 'governance-31abe670' }}
+          NEXT_PUBLIC_ROOT_OBJECT_ID: ${{ vars.ROOT_OBJECT_ID || '6nltas-recipes' }}
+          NEXT_PUBLIC_BASE_BUSINESS_OBJECT_ID: ${{ vars.BASE_BUSINESS_OBJECT_ID || 'ecy-hive-cooking' }}
 
       - uses: actions/upload-pages-artifact@v3
         with:

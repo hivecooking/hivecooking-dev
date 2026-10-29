@@ -1,5 +1,5 @@
 export function getQueryApiUrl(): string {
-  return process.env.NEXT_PUBLIC_QUERY_API_URL ?? 'http://localhost:7000';
+  return process.env.NEXT_PUBLIC_QUERY_API_URL ?? 'https://waiviodev.com';
 }
 
 export function getQueryApiVersion(): string {
@@ -7,7 +7,7 @@ export function getQueryApiVersion(): string {
 }
 
 export function getOdlNetworkId(): string {
-  return process.env.NEXT_PUBLIC_ODL_NETWORK ?? 'odl-mainnet';
+  return process.env.NEXT_PUBLIC_ODL_NETWORK ?? 'odl-testnet';
 }
 
 export function getHiveCustomJsonId(): string {
@@ -16,4 +16,16 @@ export function getHiveCustomJsonId(): string {
 
 export function getBasePath(): string {
   return process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+}
+
+export function getGovernanceObjectId(): string {
+  return process.env.NEXT_PUBLIC_GOVERNANCE_OBJECT_ID ?? 'governance-31abe670';
+}
+
+export function getRootObjectId(): string {
+  return process.env.NEXT_PUBLIC_ROOT_OBJECT_ID ?? '6nltas-recipes';
+}
+
+export function getBaseBusinessObjectId(): string {
+  return process.env.NEXT_PUBLIC_BASE_BUSINESS_OBJECT_ID ?? 'ecy-hive-cooking';
 }

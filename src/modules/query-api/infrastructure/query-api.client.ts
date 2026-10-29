@@ -1,4 +1,4 @@
-import { getQueryApiUrl, getQueryApiVersion } from '@/config/runtime';
+import { getGovernanceObjectId, getQueryApiUrl, getQueryApiVersion } from '@/config/runtime';
 import { fail, ok, type Result } from '@/shared/domain/result';
 import { safeFetch } from '@/shared/infrastructure/http/safe-fetch';
 import type { z } from 'zod';
@@ -16,7 +16,9 @@ export type QueryApiContext = {
   authorization?: string | null;
 };
 
-let globalContext: QueryApiContext = {};
+let globalContext: QueryApiContext = {
+  governanceObjectId: getGovernanceObjectId(),
+};
 
 export function setQueryApiContext(ctx: QueryApiContext): void {
   globalContext = { ...globalContext, ...ctx };
