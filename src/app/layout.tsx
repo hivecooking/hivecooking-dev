@@ -29,10 +29,10 @@ export default function RootLayout({
             <div className="mx-auto flex max-w-container-content flex-wrap items-center justify-between gap-4 px-gutter">
               <p>© {new Date().getFullYear()} HiveCooking.com · Powered by Open Data Layer (ODL)</p>
               <div className="flex flex-wrap items-center gap-4">
-                <Link href="/?id=ecy-hive-cooking" className="hover:text-accent">
+                <Link href="/object/ecy-hive-cooking" className="hover:text-accent">
                   About HiveCooking
                 </Link>
-                <Link href="/?id=governance-31abe670" className="hover:text-accent">
+                <Link href="/object/governance-31abe670" className="hover:text-accent">
                   Governance
                 </Link>
                 <Link href="/explore/" className="hover:text-accent">

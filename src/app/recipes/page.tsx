@@ -125,7 +125,7 @@ function AllRecipesCatalog() {
           return (
             <Link
               key={item.object_id}
-              href={`/?id=${encodeURIComponent(item.object_id)}`}
+              href={`/object/${encodeURIComponent(item.object_id)}`}
               className="group flex flex-col overflow-hidden rounded-card border border-border bg-surface shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md"
             >
               <div className="relative aspect-square w-full overflow-hidden bg-surface-control">

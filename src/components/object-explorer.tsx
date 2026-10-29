@@ -104,7 +104,6 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
       const obj = res.value;
       setObjectData(obj);
 
-      // Load posts for recipes, newsfeeds, pages, or lists with few/no sub-lists
       const listItems = getSortedListItems(obj);
       const shouldLoadPosts =
         obj.object_type === 'recipe' ||
@@ -127,7 +126,6 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
           const items = postsRes.value.items;
           setPosts(items);
 
-          // Automatically load full post for the first recipe post
           if (obj.object_type === 'recipe') {
             const first = items[0];
             setSelectedPostKey(`${first.author}/${first.permlink}`);
@@ -208,7 +206,6 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
   const sortedItems = useMemo(() => {
     if (!objectData) return [];
     const all = getSortedListItems(objectData);
-    // On root 6nltas-recipes, filter out ugr-recipes-by-country container if regional cuisines are present
     if (objectData.object_id === '6nltas-recipes' && all.length > 1) {
       return all.filter((item) => item.object_id !== 'ugr-recipes-by-country');
     }
@@ -236,7 +233,7 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
       <div className="rounded-card border border-border bg-surface p-8 text-center">
         <p className="text-section text-error">{error ?? t('explore.error')}</p>
         <Link
-          href="/?id=6nltas-recipes"
+          href="/object/6nltas-recipes"
           className="mt-4 inline-block rounded-btn bg-accent px-4 py-2 text-body-sm font-semibold text-accent-fg"
         >
           {t('nav.byCountry')}
@@ -296,8 +293,8 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
               const priorPath = serializeBreadcrumbs(arr.slice(0, idx));
               const href =
                 crumb.id === rootId
-                  ? '/?id=6nltas-recipes'
-                  : `/?id=${encodeURIComponent(crumb.id)}${priorPath ? `&path=${encodeURIComponent(priorPath)}` : ''}`;
+                  ? '/object/6nltas-recipes'
+                  : `/object/${encodeURIComponent(crumb.id)}${priorPath ? `?path=${encodeURIComponent(priorPath)}` : ''}`;
               return (
                 <span key={`${crumb.id}-${idx}`} className="flex items-center gap-1.5">
                   <Link href={href} className="text-fg-secondary hover:text-accent hover:underline">
@@ -312,7 +309,7 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
         )}
       </nav>
 
-      {/* Object Header Card (shown for non-root objects or when description exists) */}
+      {/* Object Header Card */}
       {!isRootList ? (
         <section className="rounded-card border border-border bg-surface p-card-padding shadow-xs">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
@@ -390,7 +387,7 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
         </section>
       ) : null}
 
-      {/* Visual Tile Grid for Lists (Cuisines, Countries, Subcategories, Chefs, Shop) */}
+      {/* Visual Tile Grid for Lists */}
       {sortedItems.length > 0 ? (
         <section>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
@@ -405,7 +402,7 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
               return (
                 <Link
                   key={item.object_id}
-                  href={`/?id=${encodeURIComponent(item.object_id)}&path=${encodeURIComponent(serializedNextPath)}`}
+                  href={`/object/${encodeURIComponent(item.object_id)}?path=${encodeURIComponent(serializedNextPath)}`}
                   className="group flex flex-col overflow-hidden rounded-card border border-border bg-surface shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md"
                 >
                   <div className="relative aspect-square w-full overflow-hidden bg-surface-control">
@@ -439,7 +436,6 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
       {/* Recipe Ingredients + Featured Post View */}
       {objectData.object_type === 'recipe' ? (
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Left Column: Ingredients Checklist */}
           <aside className="space-y-4 lg:col-span-1">
             <div className="rounded-card border border-border bg-surface p-card-padding shadow-xs">
               <h2 className="border-b border-border pb-2 text-section text-fg">
@@ -459,7 +455,6 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
               )}
             </div>
 
-            {/* Other posts linked to this recipe */}
             {posts.length > 1 ? (
               <div className="rounded-card border border-border bg-surface p-card-padding shadow-xs">
                 <h3 className="text-body font-semibold text-fg">{t('recipe.relatedPosts')}</h3>
@@ -491,14 +486,16 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
             ) : null}
           </aside>
 
-          {/* Right 2 Columns: Full Recipe Post & Video */}
           <div className="space-y-6 lg:col-span-2">
             {featuredPostLoading ? (
               <div className="h-96 animate-pulse rounded-card border border-border bg-surface p-6" />
             ) : featuredPost ? (
               <article className="rounded-card border border-border bg-surface p-card-padding shadow-xs">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-                  <div className="flex items-center gap-3">
+                  <Link
+                    href={`/@${encodeURIComponent(featuredPost.author ?? '')}`}
+                    className="flex items-center gap-3 hover:opacity-90"
+                  >
                     {featuredPost.authorProfile?.avatarUrl ? (
                       <img
                         src={featuredPost.authorProfile.avatarUrl}
@@ -521,7 +518,7 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
                           : ''}
                       </p>
                     </div>
-                  </div>
+                  </Link>
 
                   <div className="flex items-center gap-3">
                     {featuredPost.reward?.label ? (
@@ -543,7 +540,14 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
                   </div>
                 </div>
 
-                <h2 className="mt-5 text-section text-fg">{featuredPost.title}</h2>
+                <h2 className="mt-5 text-section text-fg">
+                  <Link
+                    href={`/@${encodeURIComponent(featuredPost.author ?? '')}/${encodeURIComponent(featuredPost.permlink)}`}
+                    className="hover:text-accent"
+                  >
+                    {featuredPost.title}
+                  </Link>
+                </h2>
 
                 {featuredPost.videoEmbedUrl ? (
                   <div className="my-5 aspect-video w-full overflow-hidden rounded-card bg-black">
@@ -574,7 +578,7 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
         </div>
       ) : null}
 
-      {/* HTML Object Content (e.g. fmldf-influencers Services) */}
+      {/* HTML Object Content */}
       {htmlContent ? (
         <section className="rounded-card border border-border bg-surface p-card-padding shadow-xs">
           <div
@@ -584,7 +588,7 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
         </section>
       ) : null}
 
-      {/* Page Object Content (e.g. 4fprjs-links Links) */}
+      {/* Page Object Content */}
       {pageContent ? (
         <section className="rounded-card border border-border bg-surface p-card-padding shadow-xs">
           <PostBodyRenderer body={pageContent} />
@@ -598,6 +602,7 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
           <div className="grid gap-4 md:grid-cols-2">
             {posts.map((post) => {
               const thumb = post.thumbnailUrl ?? post.videoThumbnailUrl;
+              const postHref = `/@${encodeURIComponent(post.author)}/${encodeURIComponent(post.permlink)}`;
               return (
                 <article
                   key={`${post.author}/${post.permlink}`}
@@ -605,21 +610,28 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
                 >
                   <div>
                     <div className="flex items-center justify-between gap-2 text-xs text-fg-secondary">
-                      <span className="font-semibold text-fg">@{post.author}</span>
+                      <Link
+                        href={`/@${encodeURIComponent(post.author)}`}
+                        className="font-semibold text-fg hover:text-accent"
+                      >
+                        @{post.author}
+                      </Link>
                       <span>
                         {post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}
                       </span>
                     </div>
                     {thumb ? (
-                      <img
-                        src={thumb}
-                        alt={post.title ?? ''}
-                        loading="lazy"
-                        className="mt-3 h-48 w-full rounded-card object-cover"
-                      />
+                      <Link href={postHref}>
+                        <img
+                          src={thumb}
+                          alt={post.title ?? ''}
+                          loading="lazy"
+                          className="mt-3 h-48 w-full rounded-card object-cover hover:opacity-90"
+                        />
+                      </Link>
                     ) : null}
-                    <h3 className="mt-3 text-body font-bold text-fg">
-                      {post.title || post.permlink}
+                    <h3 className="mt-3 text-body font-bold text-fg hover:text-accent">
+                      <Link href={postHref}>{post.title || post.permlink}</Link>
                     </h3>
                     {post.excerpt ? (
                       <p className="mt-1.5 line-clamp-3 text-body-sm text-fg-secondary">
@@ -632,13 +644,12 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
                       {post.reward?.label ?? '$0.00'}
                     </span>
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void handleSelectPost(post.author, post.permlink)}
+                      <Link
+                        href={postHref}
                         className="rounded-btn bg-secondary px-3 py-1 text-xs font-semibold text-secondary-fg hover:opacity-80"
                       >
                         {t('common.readMore')}
-                      </button>
+                      </Link>
                       <button
                         type="button"
                         onClick={() => void handleVotePost(post.author, post.permlink)}
@@ -652,31 +663,6 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
               );
             })}
           </div>
-
-          {featuredPost ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-              <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-card border border-border bg-surface p-6 shadow-2xl">
-                <div className="flex items-center justify-between border-b border-border pb-3">
-                  <div>
-                    <h3 className="text-section text-fg">{featuredPost.title}</h3>
-                    <p className="text-xs text-fg-secondary">@{featuredPost.author}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setFeaturedPost(null)}
-                    className="rounded-btn bg-secondary px-3 py-1 text-body-sm font-bold text-secondary-fg"
-                  >
-                    ✕
-                  </button>
-                </div>
-                {featuredPost.body ? (
-                  <div className="mt-4">
-                    <PostBodyRenderer body={featuredPost.body} />
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
         </section>
       ) : null}
     </div>

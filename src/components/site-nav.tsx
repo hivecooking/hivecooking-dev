@@ -11,21 +11,23 @@ import { useWallet } from '@/modules/wallet';
 import { isOk } from '@/shared/domain/result';
 
 const NAV_ITEMS = [
-  { href: '/?id=6nltas-recipes', matchId: '6nltas-recipes', matchPath: '/', key: 'nav.byCountry' },
-  { href: '/recipes/', matchId: null, matchPath: '/recipes', key: 'nav.allRecipes' },
-  { href: '/?id=fmldf-influencers', matchId: 'fmldf-influencers', matchPath: null, key: 'nav.services' },
-  { href: '/community/', matchId: null, matchPath: '/community', key: 'nav.community' },
-  { href: '/?id=jvbdu-chefs', matchId: 'jvbdu-chefs', matchPath: null, key: 'nav.chefs' },
-  { href: '/?id=4fprjs-links', matchId: '4fprjs-links', matchPath: null, key: 'nav.links' },
-  { href: '/?id=4ie2uj-shop', matchId: '4ie2uj-shop', matchPath: null, key: 'nav.shop' },
+  { href: '/object/6nltas-recipes', matchId: '6nltas-recipes', matchPath: '/', key: 'nav.byCountry' },
+  { href: '/discover-objects/recipe/', matchId: null, matchPath: '/discover-objects/recipe', key: 'nav.allRecipes' },
+  { href: '/object/fmldf-influencers', matchId: 'fmldf-influencers', matchPath: null, key: 'nav.services' },
+  { href: '/object/eai-hive-cooking-community', matchId: 'eai-hive-cooking-community', matchPath: '/community', key: 'nav.community' },
+  { href: '/object/jvbdu-chefs', matchId: 'jvbdu-chefs', matchPath: null, key: 'nav.chefs' },
+  { href: '/object/4fprjs-links', matchId: '4fprjs-links', matchPath: null, key: 'nav.links' },
+  { href: '/object/4ie2uj-shop', matchId: '4ie2uj-shop', matchPath: null, key: 'nav.shop' },
 ] as const;
 
 function NavTabsBar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { t } = useI18n();
-  const currentId = searchParams.get('id');
+  const queryId = searchParams.get('id');
   const normPath = pathname.replace(/\/$/, '') || '/';
+  const objPathMatch = normPath.match(/^\/object\/([^/]+)/);
+  const currentId = objPathMatch?.[1] ? decodeURIComponent(objPathMatch[1]) : queryId;
 
   return (
     <nav className="border-b border-border bg-surface shadow-xs">
@@ -33,13 +35,14 @@ function NavTabsBar() {
         {NAV_ITEMS.map((item) => {
           let active = false;
           if (item.matchId) {
-            if (normPath === '/') {
-              active =
-                currentId === item.matchId ||
-                (!currentId && item.matchId === '6nltas-recipes');
-            }
-          } else if (item.matchPath) {
-            active = normPath === item.matchPath;
+            active =
+              currentId === item.matchId ||
+              (normPath === '/' && !currentId && item.matchId === '6nltas-recipes');
+          }
+          if (!active && item.matchPath) {
+            active =
+              normPath === item.matchPath ||
+              (item.matchPath === '/discover-objects/recipe' && normPath === '/recipes');
           }
 
           return (
@@ -116,7 +119,7 @@ export function SiteNav() {
       const q = searchQuery.trim();
       if (!q) return;
       setSearchOpen(false);
-      router.push(`/recipes/?q=${encodeURIComponent(q)}`);
+      router.push(`/discover-objects/recipe/?q=${encodeURIComponent(q)}`);
     },
     [router, searchQuery],
   );
@@ -143,7 +146,7 @@ export function SiteNav() {
       {/* Top Bar: Logo + Search + Keychain Auth */}
       <div className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-container-content flex-wrap items-center justify-between gap-4 px-gutter py-2.5">
-          <Link href="/?id=6nltas-recipes" className="flex items-center gap-2 shrink-0">
+          <Link href="/object/6nltas-recipes" className="flex items-center gap-2 shrink-0">
             <img
               src={HIVECOOKING_LOGO_URL}
               alt="HiveCooking.com"
@@ -182,7 +185,7 @@ export function SiteNav() {
                     {searchResults.objects.map((obj) => (
                       <Link
                         key={obj.object_id}
-                        href={`/?id=${encodeURIComponent(obj.object_id)}`}
+                        href={`/object/${encodeURIComponent(obj.object_id)}`}
                         onClick={() => setSearchOpen(false)}
                         className="flex items-center gap-3 rounded-btn px-3 py-2 hover:bg-surface-control"
                       >
@@ -208,6 +211,32 @@ export function SiteNav() {
                         </div>
                       </Link>
                     ))}
+                    {searchResults.users.map((u) => (
+                      <Link
+                        key={`user-${u.name}`}
+                        href={`/@${encodeURIComponent(u.name)}`}
+                        onClick={() => setSearchOpen(false)}
+                        className="flex items-center gap-3 rounded-btn px-3 py-2 hover:bg-surface-control"
+                      >
+                        {u.profile_image ? (
+                          <img
+                            src={u.profile_image}
+                            alt=""
+                            className="h-9 w-9 shrink-0 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-fg">
+                            @
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-body-sm font-medium text-fg">@{u.name}</p>
+                          <p className="truncate text-xs text-fg-secondary">
+                            User · {u.followers_count} followers
+                          </p>
+                        </div>
+                      </Link>
+                    ))}
                   </>
                 )}
               </div>
@@ -218,9 +247,12 @@ export function SiteNav() {
           <div className="flex items-center gap-3 shrink-0">
             {username ? (
               <div className="flex items-center gap-2">
-                <span className="rounded-btn bg-surface-control px-3 py-1.5 text-body-sm font-semibold text-fg">
+                <Link
+                  href={`/@${encodeURIComponent(username)}`}
+                  className="rounded-btn bg-surface-control px-3 py-1.5 text-body-sm font-semibold text-fg hover:text-accent"
+                >
                   @{username}
-                </span>
+                </Link>
                 <button
                   type="button"
                   onClick={() => disconnect()}
@@ -252,11 +284,7 @@ export function SiteNav() {
       </div>
 
       {/* Main Navigation Tabs */}
-      <Suspense
-        fallback={
-          <div className="h-12 border-b border-border bg-surface" />
-        }
-      >
+      <Suspense fallback={<div className="h-12 border-b border-border bg-surface" />}>
         <NavTabsBar />
       </Suspense>
 

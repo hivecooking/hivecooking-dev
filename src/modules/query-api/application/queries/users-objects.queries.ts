@@ -16,6 +16,23 @@ export async function fetchUserProfile(name: string, signal?: AbortSignal) {
   });
 }
 
+export async function fetchUserBlog(
+  name: string,
+  body: { limit?: number; cursor?: string; currency?: string } = {},
+  signal?: AbortSignal,
+) {
+  const encoded = encodeURIComponent(name);
+  return queryApiFetch<PaginatedFeedPosts>(`/users/${encoded}/blog`, paginatedFeedPostsSchema, {
+    method: 'POST',
+    body: {
+      limit: body.limit ?? 15,
+      cursor: body.cursor,
+      currency: body.currency ?? 'USD',
+    },
+    signal,
+  });
+}
+
 export async function resolveObject(
   body: { object_id: string; update_types?: string[]; include_rejected?: boolean },
   signal?: AbortSignal,
