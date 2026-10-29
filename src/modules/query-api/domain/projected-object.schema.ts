@@ -7,29 +7,30 @@ export const projectedObjectSchema = z.object({
   status: z.string().nullable().optional(),
   weight: z.number().nullable().optional(),
   fields: z.record(z.string(), z.unknown()),
-  hasAdministrativeAuthority: z.boolean().optional().default(false),
-  hasOwnershipAuthority: z.boolean().optional().default(false),
-  isFavorited: z.boolean().optional(),
-  listItemsCount: z.number().int().optional(),
+  hasAdministrativeAuthority: z.boolean().nullable().optional().transform((v) => Boolean(v)),
+  hasOwnershipAuthority: z.boolean().nullable().optional().transform((v) => Boolean(v)),
+  isFavorited: z.boolean().nullable().optional(),
+  listItemsCount: z.number().nullable().optional(),
   previewGallery: z
     .array(
       z.object({
         url: z.string(),
-        rankScore: z.number().optional(),
-        isAvatar: z.boolean().optional(),
+        rankScore: z.number().nullable().optional(),
+        isAvatar: z.boolean().nullable().optional(),
       }),
     )
+    .nullable()
     .optional(),
 });
 
 export type ProjectedObject = z.infer<typeof projectedObjectSchema>;
 
 export const projectedObjectWithCountsSchema = projectedObjectSchema.extend({
-  followers_count: z.number().int().optional(),
-  posts_count: z.number().int().optional(),
-  updates_count: z.number().int().optional(),
-  is_following: z.boolean().optional(),
-  viewer_bell: z.boolean().optional(),
+  followers_count: z.number().nullable().optional(),
+  posts_count: z.number().nullable().optional(),
+  updates_count: z.number().nullable().optional(),
+  is_following: z.boolean().nullable().optional(),
+  viewer_bell: z.boolean().nullable().optional(),
 });
 
 export type ProjectedObjectWithCounts = z.infer<typeof projectedObjectWithCountsSchema>;
@@ -68,7 +69,7 @@ export function getObjectAvatarUrl(
   obj:
     | {
         fields?: Record<string, unknown>;
-        previewGallery?: Array<{ url: string; isAvatar?: boolean }>;
+        previewGallery?: Array<{ url: string; isAvatar?: boolean | null }> | null;
       }
     | null
     | undefined,

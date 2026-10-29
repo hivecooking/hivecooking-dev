@@ -69,16 +69,18 @@ async function resolveSeoMeta(url) {
         ? obj.fields.recipeIngredients
         : [];
 
-    const jsonLd = isRecipe
-      ? {
-          "@context": "https://schema.org",
-          "@type": "Recipe",
-          name,
-          description: String(desc).slice(0, 300),
-          image: [image],
-          recipeIngredient: ingredients,
-        }
-      : null;
+    const jsonLd = obj.seo?.json_ld
+      ? { ...obj.seo.json_ld, url: canonicalUrl }
+      : isRecipe
+        ? {
+            "@context": "https://schema.org",
+            "@type": "Recipe",
+            name,
+            description: String(desc).slice(0, 300),
+            image: [image],
+            recipeIngredient: ingredients,
+          }
+        : null;
 
     return {
       title: `${name} | HiveCooking.com`,

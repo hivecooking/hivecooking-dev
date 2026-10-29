@@ -278,6 +278,91 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
   const pageContent =
     typeof objectData.fields?.pageContent === 'string' ? objectData.fields.pageContent : null;
 
+  const price =
+    typeof objectData.fields?.price === 'string'
+      ? objectData.fields.price
+      : typeof objectData.fields?.price === 'number'
+        ? String(objectData.fields.price)
+        : null;
+  const compareAtPrice =
+    typeof objectData.fields?.compareAtPrice === 'string'
+      ? objectData.fields.compareAtPrice
+      : null;
+
+  const rawButton = objectData.fields?.button as
+    | { title?: string; link?: string }
+    | Array<{ title?: string; link?: string }>
+    | undefined;
+  const buttonObj = Array.isArray(rawButton) ? rawButton[0] : rawButton;
+
+  const rawWebsite = objectData.fields?.website as
+    | { title?: string; link?: string }
+    | Array<{ title?: string; link?: string }>
+    | undefined;
+  const websiteObj = Array.isArray(rawWebsite) ? rawWebsite[0] : rawWebsite;
+
+  const featureList: Array<{ key: string; value: string }> = Array.isArray(
+    objectData.fields?.featureList,
+  )
+    ? (objectData.fields.featureList as unknown[]).flatMap((item) => {
+        if (item && typeof item === 'object' && 'key' in item && 'value' in item) {
+          const r = item as Record<string, unknown>;
+          return [{ key: String(r.key), value: String(r.value) }];
+        }
+        return [];
+      })
+    : [];
+
+  const tagCategoryItems: Array<{ category: string; value: string }> = Array.isArray(
+    objectData.fields?.tagCategoryItem,
+  )
+    ? (objectData.fields.tagCategoryItem as unknown[]).flatMap((item) => {
+        if (item && typeof item === 'object' && 'category' in item && 'value' in item) {
+          const r = item as Record<string, unknown>;
+          return [{ category: String(r.category), value: String(r.value) }];
+        }
+        return [];
+      })
+    : [];
+
+  const linkedEntityFields = ['brand', 'merchant', 'manufacturer', 'publisher', 'authors'] as const;
+  const linkedEntities: Array<{
+    role: string;
+    object_id: string;
+    name: string;
+    avatar: string | null;
+  }> = [];
+  for (const fieldKey of linkedEntityFields) {
+    const val = objectData.fields?.[fieldKey];
+    const arr = Array.isArray(val) ? val : val ? [val] : [];
+    for (const entry of arr) {
+      if (entry && typeof entry === 'object' && 'object_id' in entry) {
+        const e = entry as { object_id: string; fields?: Record<string, unknown> };
+        linkedEntities.push({
+          role: fieldKey,
+          object_id: String(e.object_id),
+          name: getObjectDisplayName(e),
+          avatar: getObjectAvatarUrl(e),
+        });
+      }
+    }
+  }
+
+  const galleryUrls: string[] = [];
+  if (Array.isArray(objectData.previewGallery)) {
+    for (const g of objectData.previewGallery) {
+      if (g?.url && !galleryUrls.includes(g.url)) galleryUrls.push(g.url);
+    }
+  }
+  if (Array.isArray(objectData.fields?.imageGalleryItem)) {
+    for (const raw of objectData.fields.imageGalleryItem as unknown[]) {
+      if (raw && typeof raw === 'object' && 'url' in raw) {
+        const u = String((raw as Record<string, unknown>).url);
+        if (u && !galleryUrls.includes(u)) galleryUrls.push(u);
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb Navigation Trail */}
@@ -341,6 +426,61 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
                 <p className="text-body font-medium text-fg-secondary">{subtitle}</p>
               ) : null}
 
+              {(price || compareAtPrice || buttonObj?.link || websiteObj?.link) ? (
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  {price ? (
+                    <span className="text-section font-bold text-accent">{price}</span>
+                  ) : null}
+                  {compareAtPrice ? (
+                    <span className="text-body-sm text-fg-secondary line-through">
+                      {compareAtPrice}
+                    </span>
+                  ) : null}
+                  {buttonObj?.link ? (
+                    <a
+                      href={buttonObj.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-btn bg-accent px-4 py-1.5 text-body-sm font-semibold text-accent-fg hover:opacity-90"
+                    >
+                      {buttonObj.title || 'Buy Now'} ↗
+                    </a>
+                  ) : null}
+                  {websiteObj?.link && websiteObj.link !== buttonObj?.link ? (
+                    <a
+                      href={websiteObj.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-btn border border-border bg-surface-control px-3.5 py-1.5 text-body-sm font-medium text-fg hover:border-accent"
+                    >
+                      🌐 {websiteObj.title || 'Website'} ↗
+                    </a>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {linkedEntities.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {linkedEntities.map((ent) => (
+                    <Link
+                      key={`${ent.role}-${ent.object_id}`}
+                      href={`/object/${encodeURIComponent(ent.object_id)}`}
+                      className="inline-flex items-center gap-2 rounded-btn border border-border bg-surface-control px-2.5 py-1 text-xs font-medium text-fg hover:border-accent"
+                    >
+                      {ent.avatar ? (
+                        <img
+                          src={ent.avatar}
+                          alt={ent.name}
+                          className="h-4 w-4 rounded-full object-cover"
+                        />
+                      ) : null}
+                      <span className="text-fg-secondary uppercase">{ent.role}:</span>
+                      <span className="font-semibold">{ent.name}</span>
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+
               {description ? (
                 <div className="text-body-sm leading-relaxed text-fg">
                   <p className={descExpanded ? 'whitespace-pre-line' : 'line-clamp-3 whitespace-pre-line'}>
@@ -358,7 +498,7 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
                 </div>
               ) : null}
 
-              {(categories.length > 0 || tagCategories.length > 0) ? (
+              {(categories.length > 0 || tagCategories.length > 0 || tagCategoryItems.length > 0) ? (
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {categories.map((cat) => (
                     <span
@@ -368,14 +508,24 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
                       🍴 {cat}
                     </span>
                   ))}
-                  {tagCategories.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-btn border border-border px-2.5 py-1 text-xs text-fg-secondary"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
+                  {tagCategoryItems.length > 0
+                    ? tagCategoryItems.map((tci, idx) => (
+                        <span
+                          key={`${tci.category}-${tci.value}-${idx}`}
+                          className="rounded-btn border border-border bg-surface-control px-2.5 py-1 text-xs text-fg"
+                        >
+                          <span className="text-fg-secondary">{tci.category}:</span>{' '}
+                          <span className="font-medium">{tci.value}</span>
+                        </span>
+                      ))
+                    : tagCategories.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-btn border border-border px-2.5 py-1 text-xs text-fg-secondary"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
                 </div>
               ) : null}
             </div>
@@ -383,6 +533,51 @@ export function ObjectExplorer({ initialObjectId }: { initialObjectId?: string }
 
           {actionStatus ? (
             <p className="mt-3 text-body-sm font-medium text-accent">{actionStatus}</p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* Product / Object Gallery & Specifications */}
+      {!isRootList && (galleryUrls.length > 1 || featureList.length > 0) ? (
+        <section className="grid gap-6 lg:grid-cols-3">
+          {galleryUrls.length > 1 ? (
+            <div className="rounded-card border border-border bg-surface p-card-padding shadow-xs lg:col-span-2">
+              <h2 className="border-b border-border pb-2 text-body font-bold text-fg">Photos</h2>
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {galleryUrls.map((url, idx) => (
+                  <a
+                    key={url}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="overflow-hidden rounded-card border border-border bg-surface-control hover:opacity-90"
+                  >
+                    <img
+                      src={url}
+                      alt={`${displayName} ${idx + 1}`}
+                      loading="lazy"
+                      className="aspect-square h-full w-full object-cover"
+                    />
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {featureList.length > 0 ? (
+            <div className="rounded-card border border-border bg-surface p-card-padding shadow-xs lg:col-span-1">
+              <h2 className="border-b border-border pb-2 text-body font-bold text-fg">
+                Specifications
+              </h2>
+              <dl className="mt-3 divide-y divide-border text-body-sm">
+                {featureList.map((feat, idx) => (
+                  <div key={`${feat.key}-${idx}`} className="flex justify-between gap-3 py-2">
+                    <dt className="text-fg-secondary">{feat.key}</dt>
+                    <dd className="text-right font-medium text-fg">{feat.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
           ) : null}
         </section>
       ) : null}
