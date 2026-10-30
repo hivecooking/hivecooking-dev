@@ -1,21 +1,16 @@
 'use client';
 
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
 
+import { CatalogItemCard } from '@/components/object-explorer';
 import { useI18n } from '@/i18n';
 import {
   fetchDiscoverObjects,
-  getObjectAvatarUrl,
-  getObjectDisplayName,
   type DiscoverObjectsResponse,
 } from '@/modules/query-api';
 import { useInfiniteScroll } from '@/shared';
 import { isOk } from '@/shared/domain/result';
-
-const FALLBACK_RECIPE_IMG =
-  'https://waivio.nyc3.digitaloceanspaces.com/ab36044f80dd2351b19f3557fc4c2caa1a0e07965c620e648043adbdb4886180';
 
 function AllRecipesCatalog() {
   const { t } = useI18n();
@@ -118,30 +113,14 @@ function AllRecipesCatalog() {
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {items.map((item) => {
-          const name = getObjectDisplayName(item);
-          const img = getObjectAvatarUrl(item) ?? FALLBACK_RECIPE_IMG;
-          return (
-            <Link
-              key={item.object_id}
-              href={`/object/${encodeURIComponent(item.object_id)}`}
-              className="group flex flex-col overflow-hidden rounded-card border border-border bg-surface shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <div className="relative aspect-square w-full overflow-hidden bg-surface-control">
-                <img
-                  src={img}
-                  alt={name}
-                  loading="lazy"
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                />
-              </div>
-              <div className="flex min-h-[42px] items-center justify-center bg-accent px-2.5 py-2 text-center text-body-sm font-semibold text-accent-fg">
-                <span className="line-clamp-2 leading-snug">{name}</span>
-              </div>
-            </Link>
-          );
-        })}
+      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        {items.map((item) => (
+          <CatalogItemCard
+            key={item.object_id}
+            item={item}
+            href={`/object/${encodeURIComponent(item.object_id)}`}
+          />
+        ))}
       </div>
 
       {loading ? (

@@ -1,9 +1,11 @@
 import {
+  discoverObjectsResponseSchema,
   paginatedFeedPostsSchema,
   paginatedUserFollowListSchema,
   resolveNestedResponseSchema,
   resolveObjectResponseSchema,
   userProfileSchema,
+  type DiscoverObjectsResponse,
   type PaginatedFeedPosts,
   type UserProfile,
 } from '../../domain/api-responses.schema';
@@ -85,6 +87,46 @@ export async function fetchObjectPosts(
         limit: body.limit ?? 15,
         cursor: body.cursor,
         currency: body.currency ?? 'USD',
+      },
+      signal,
+    },
+  );
+}
+
+export async function fetchObjectSimilar(
+  objectId: string,
+  body: { limit?: number; cursor?: string } = {},
+  signal?: AbortSignal,
+) {
+  const encoded = encodeURIComponent(objectId);
+  return queryApiFetch<DiscoverObjectsResponse>(
+    `/objects/${encoded}/similar`,
+    discoverObjectsResponseSchema,
+    {
+      method: 'POST',
+      body: {
+        limit: body.limit ?? 5,
+        cursor: body.cursor,
+      },
+      signal,
+    },
+  );
+}
+
+export async function fetchObjectRelated(
+  objectId: string,
+  body: { limit?: number; cursor?: string } = {},
+  signal?: AbortSignal,
+) {
+  const encoded = encodeURIComponent(objectId);
+  return queryApiFetch<DiscoverObjectsResponse>(
+    `/objects/${encoded}/related`,
+    discoverObjectsResponseSchema,
+    {
+      method: 'POST',
+      body: {
+        limit: body.limit ?? 5,
+        cursor: body.cursor,
       },
       signal,
     },

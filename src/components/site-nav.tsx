@@ -30,8 +30,8 @@ function NavTabsBar() {
   const currentId = objPathMatch?.[1] ? decodeURIComponent(objPathMatch[1]) : queryId;
 
   return (
-    <nav className="border-b border-border bg-surface shadow-xs">
-      <ul className="mx-auto flex max-w-container-content flex-wrap items-center justify-center gap-2 px-gutter sm:gap-6">
+    <nav className="border-b border-[#e9e7e7] bg-white shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
+      <ul className="mx-auto flex max-w-container-content flex-wrap items-center justify-around gap-3 px-gutter py-0.5 sm:gap-8">
         {NAV_ITEMS.map((item) => {
           let active = false;
           if (item.matchId) {
@@ -50,10 +50,8 @@ function NavTabsBar() {
               <Link
                 href={item.href}
                 suppressHydrationWarning
-                className={`inline-block border-b-2 px-2 py-3 text-body-sm font-semibold tracking-wide uppercase transition-colors ${
-                  active
-                    ? 'border-accent text-accent'
-                    : 'border-transparent text-fg hover:border-border hover:text-accent'
+                className={`inline-block border-b-2 px-2 py-2.5 text-[15px] tracking-wide text-[#af3d36] uppercase transition-opacity hover:opacity-80 ${
+                  active ? 'border-[#af3d36] font-semibold' : 'border-transparent font-normal'
                 }`}
               >
                 {t(item.key)}
@@ -144,19 +142,45 @@ export function SiteNav() {
   return (
     <header className="bg-surface">
       {/* Top Bar: Logo + Search + Keychain Auth */}
-      <div className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-container-content flex-wrap items-center justify-between gap-4 px-gutter py-2.5">
-          <Link href="/object/6nltas-recipes" className="flex items-center gap-2 shrink-0">
+      <div className="border-b border-[#e9e7e7] bg-white">
+        <div className="mx-auto flex max-w-container-content flex-wrap items-center justify-between gap-4 px-gutter py-2">
+          <Link href="/object/6nltas-recipes" className="flex items-center gap-3 shrink-0">
             <img
               src={HIVECOOKING_LOGO_URL}
               alt="HiveCooking.com"
-              className="h-10 w-auto object-contain sm:h-12"
+              className="h-10 w-10 object-contain sm:h-11 sm:w-11"
             />
+            <span className="text-[18px] font-normal tracking-wide text-[#af3d36] uppercase sm:text-[19px]">
+              HIVECOOKING.COM
+            </span>
           </Link>
 
           {/* Predictive Search Box */}
           <div ref={searchBoxRef} className="relative flex-1 max-w-xl">
             <form onSubmit={handleSearchSubmit} className="relative flex items-center">
+              <button
+                type="submit"
+                aria-label={t('explore.search')}
+                className=" absolute left-3 text-[#af3d36] hover:opacity-80"
+              >
+                {searching ? (
+                  <span className="text-xs">…</span>
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-4 w-4"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                )}
+              </button>
               <input
                 type="search"
                 value={searchQuery}
@@ -165,15 +189,8 @@ export function SiteNav() {
                 }}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('header.searchPlaceholder')}
-                className="w-full rounded-btn border border-border bg-surface-control py-2 pr-10 pl-3.5 text-body-sm text-fg placeholder:text-fg-secondary focus:border-accent focus:outline-none"
+                className="w-full rounded-[4px] border border-[#af3d36] bg-white py-1.5 pr-3.5 pl-9 text-body-sm text-[#353535] placeholder:text-[#99aab5] focus:outline-none"
               />
-              <button
-                type="submit"
-                aria-label={t('explore.search')}
-                className="absolute right-2.5 text-fg-secondary hover:text-accent"
-              >
-                {searching ? '…' : '🔍'}
-              </button>
             </form>
 
             {searchOpen && searchResults ? (
