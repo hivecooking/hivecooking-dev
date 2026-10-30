@@ -13,16 +13,13 @@ import { isOk } from '@/shared/domain/result';
 const PRIMARY_NAV_ITEMS = [
   { href: '/object/6nltas-recipes', matchId: '6nltas-recipes', matchPath: '/', label: 'BY COUNTRY' },
   { href: '/discover-objects/recipe/', matchId: null, matchPath: '/discover-objects/recipe', label: 'ALL RECIPES' },
-  { href: '/object/6nltas-recipes', matchId: '__earn__', matchPath: '/active-campaigns/recipe', label: 'EARN!' },
-  { href: '/object/fmldf-influencers', matchId: 'fmldf-influencers', matchPath: null, label: 'SERVICES' },
   { href: '/object/eai-hive-cooking-community', matchId: 'eai-hive-cooking-community', matchPath: '/community', label: 'COMMUNITY' },
+  { href: '/object/jvbdu-chefs', matchId: 'jvbdu-chefs', matchPath: null, label: 'CHEFS' },
+  { href: '/object/4fprjs-links', matchId: '4fprjs-links', matchPath: null, label: 'LINKS' },
+  { href: '/object/4ie2uj-shop', matchId: '4ie2uj-shop', matchPath: null, label: 'SHOP' },
 ] as const;
 
-const MORE_NAV_ITEMS = [
-  { href: '/object/jvbdu-chefs', label: 'CHEFS' },
-  { href: '/object/4fprjs-links', label: 'LINKS' },
-  { href: '/object/4ie2uj-shop', label: 'SHOP' },
-] as const;
+const MORE_NAV_ITEMS: readonly { href: string; label: string }[] = [];
 
 function NavTabsBar() {
   const pathname = usePathname();
@@ -53,7 +50,7 @@ function NavTabsBar() {
       >
         {PRIMARY_NAV_ITEMS.map((item) => {
           let active = false;
-          if (item.matchId && item.matchId !== '__earn__') {
+          if (item.matchId) {
             active =
               currentId === item.matchId ||
               (normPath === '/' && !currentId && item.matchId === '6nltas-recipes');
@@ -81,44 +78,46 @@ function NavTabsBar() {
           );
         })}
 
-        {/* MORE dropdown trigger (6th 200px slot) */}
-        <div ref={moreRef} className="relative inline-block h-[25px] w-[200px] text-center">
-          <button
-            type="button"
-            onClick={() => setMoreOpen((v) => !v)}
-            className="inline-block h-[25px] w-[200px] cursor-pointer text-center text-[16px] leading-[24px] font-normal tracking-normal text-[#af3d36] uppercase"
-          >
-            more{' '}
-            <i aria-label="icon: caret-down" className="inline-block align-[-0.125em] text-[14px]">
-              <svg
-                viewBox="0 0 1024 1024"
-                focusable="false"
-                data-icon="caret-down"
-                width="1em"
-                height="1em"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M840.4 300H183.6c-19.7 0-30.7 20.8-18.5 35l328.4 380.8c9.4 10.9 27.5 10.9 37 0L858.9 335c12.2-14.2 1.2-35-18.5-35z" />
-              </svg>
-            </i>
-          </button>
-
-          {moreOpen ? (
-            <div className="absolute left-1/2 top-full z-50 mt-2 w-44 -translate-x-1/2 rounded-[4px] border border-[#e9e7e7] bg-white py-1.5 shadow-lg">
-              {MORE_NAV_ITEMS.map((sub) => (
-                <Link
-                  key={sub.label}
-                  href={sub.href}
-                  onClick={() => setMoreOpen(false)}
-                  className="block px-4 py-2 text-left text-[15px] font-normal text-[#af3d36] uppercase hover:bg-[#fafbfc]"
+        {/* MORE dropdown trigger (only rendered when > 6 items) */}
+        {MORE_NAV_ITEMS.length > 0 ? (
+          <div ref={moreRef} className="relative inline-block h-[25px] w-[200px] text-center">
+            <button
+              type="button"
+              onClick={() => setMoreOpen((v) => !v)}
+              className="inline-block h-[25px] w-[200px] cursor-pointer text-center text-[16px] leading-[24px] font-normal tracking-normal text-[#af3d36] uppercase"
+            >
+              more{' '}
+              <i aria-label="icon: caret-down" className="inline-block align-[-0.125em] text-[14px]">
+                <svg
+                  viewBox="0 0 1024 1024"
+                  focusable="false"
+                  data-icon="caret-down"
+                  width="1em"
+                  height="1em"
+                  fill="currentColor"
+                  aria-hidden="true"
                 >
-                  {sub.label}
-                </Link>
-              ))}
-            </div>
-          ) : null}
-        </div>
+                  <path d="M840.4 300H183.6c-19.7 0-30.7 20.8-18.5 35l328.4 380.8c9.4 10.9 27.5 10.9 37 0L858.9 335c12.2-14.2 1.2-35-18.5-35z" />
+                </svg>
+              </i>
+            </button>
+
+            {moreOpen ? (
+              <div className="absolute left-1/2 top-full z-50 mt-2 w-44 -translate-x-1/2 rounded-[4px] border border-[#e9e7e7] bg-white py-1.5 shadow-lg">
+                {MORE_NAV_ITEMS.map((sub) => (
+                  <Link
+                    key={sub.label}
+                    href={sub.href}
+                    onClick={() => setMoreOpen(false)}
+                    className="block px-4 py-2 text-left text-[15px] font-normal text-[#af3d36] uppercase hover:bg-[#fafbfc]"
+                  >
+                    {sub.label}
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </nav>
     </div>
   );
