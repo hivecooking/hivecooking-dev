@@ -92,42 +92,75 @@ async function resolveSeoMeta(url) {
     };
   }
 
-  // 2. /@<username>/<permlink>
-  const postMatch = norm.match(/^\/@([^/]+)\/([^/]+)/);
-  if (postMatch?.[1] && postMatch?.[2]) {
-    const author = decodeURIComponent(postMatch[1]);
-    const permlink = decodeURIComponent(postMatch[2]);
-    const post = await callMcp("get_post", { author, permlink, currency: "USD" });
-    if (!post) return null;
-    const title = post.title || `${permlink} by @${author}`;
-    const desc = post.excerpt || `Read ${title} by @${author} on HiveCooking.com.`;
-    const image = post.thumbnailUrl || post.videoThumbnailUrl || post.authorProfile?.avatarUrl || DEFAULT_IMAGE;
-    return {
-      title: `${title} — @${author} | HiveCooking.com`,
-      description: String(desc).slice(0, 200),
-      image,
-      canonicalUrl,
-      ogType: "article",
-      jsonLd: null,
-    };
-  }
+  // 2. /@<username>(/<rest>...)
+  if (norm.startsWith("/@")) {
+    const parts = norm.slice(2).split("/").filter(Boolean);
+    const author = parts[0] ? decodeURIComponent(parts[0]) : "";
+    const rest = parts.slice(1).map((s) => decodeURIComponent(s));
+    const reserved = new Set([
+      "threads",
+      "messages",
+      "comments",
+      "mentions",
+      "activity",
+      "map",
+      "user-shop",
+      "recipe",
+      "favorites",
+      "transfers",
+      "followers",
+      "following",
+      "following-objects",
+      "reblogs",
+      "expertise-hashtags",
+      "expertise-objects",
+      "about",
+      "permissions",
+    ]);
 
-  // 3. /@<username>
-  const userMatch = norm.match(/^\/@([^/]+)$/);
-  if (userMatch?.[1]) {
-    const account = decodeURIComponent(userMatch[1]);
-    const prof = await callMcp("get_user_profile", { account });
-    const displayName = prof?.displayName || `@${account}`;
-    const desc = prof?.bio || `Explore recipes and culinary posts by ${displayName} (@${account}) on HiveCooking.com.`;
-    const image = prof?.avatarUrl || DEFAULT_IMAGE;
-    return {
-      title: `${displayName} (@${account}) | HiveCooking.com`,
-      description: String(desc).slice(0, 200),
-      image,
-      canonicalUrl,
-      ogType: "profile",
-      jsonLd: null,
-    };
+    const permlink =
+      rest[0] === "post" && rest[1]
+        ? rest[1]
+        : rest.length > 0 && !reserved.has(rest[0])
+          ? rest[0]
+          : null;
+
+    if (author && permlink) {
+      const post = await callMcp("get_post", { author, permlink, currency: "USD" });
+      if (!post) return null;
+      const title = post.title || `${permlink} by @${author}`;
+      const desc = post.excerpt || `Read ${title} by @${author} on HiveCooking.com.`;
+      const image =
+        post.thumbnailUrl ||
+        post.videoThumbnailUrl ||
+        post.authorProfile?.avatarUrl ||
+        DEFAULT_IMAGE;
+      return {
+        title: `${title} — @${author} | HiveCooking.com`,
+        description: String(desc).slice(0, 200),
+        image,
+        canonicalUrl,
+        ogType: "article",
+        jsonLd: null,
+      };
+    }
+
+    if (author) {
+      const prof = await callMcp("get_user_profile", { account: author });
+      const displayName = prof?.displayName || `@${author}`;
+      const desc =
+        prof?.bio ||
+        `Explore recipes and culinary posts by ${displayName} (@${author}) on HiveCooking.com.`;
+      const image = prof?.avatarUrl || DEFAULT_IMAGE;
+      return {
+        title: `${displayName} (@${author}) | HiveCooking.com`,
+        description: String(desc).slice(0, 200),
+        image,
+        canonicalUrl,
+        ogType: "profile",
+        jsonLd: null,
+      };
+    }
   }
 
   return null;

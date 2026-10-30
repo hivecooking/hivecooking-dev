@@ -6,6 +6,27 @@ import { Suspense } from 'react';
 import { ObjectExplorer } from './object-explorer';
 import { UserProfileViewer } from './user-profile-viewer';
 
+const RESERVED_PROFILE_FIRST_SEGMENTS = new Set([
+  'threads',
+  'messages',
+  'comments',
+  'mentions',
+  'activity',
+  'map',
+  'user-shop',
+  'recipe',
+  'favorites',
+  'transfers',
+  'followers',
+  'following',
+  'following-objects',
+  'reblogs',
+  'expertise-hashtags',
+  'expertise-objects',
+  'about',
+  'permissions',
+]);
+
 function InnerDispatcher() {
   const pathname = usePathname();
   const norm = pathname.replace(/\/+$/, '') || '/';
@@ -16,21 +37,24 @@ function InnerDispatcher() {
     return <ObjectExplorer initialObjectId={decodeURIComponent(objMatch[1])} />;
   }
 
-  // Match /@<username>/<permlink>
-  const postMatch = norm.match(/^\/@([^/]+)\/([^/]+)/);
-  if (postMatch?.[1] && postMatch?.[2]) {
-    return (
-      <UserProfileViewer
-        username={decodeURIComponent(postMatch[1])}
-        permlink={decodeURIComponent(postMatch[2])}
-      />
-    );
-  }
-
-  // Match /@<username>
-  const userMatch = norm.match(/^\/@([^/]+)$/);
-  if (userMatch?.[1]) {
-    return <UserProfileViewer username={decodeURIComponent(userMatch[1])} />;
+  // Match /@<username>(/<rest>...)
+  if (norm.startsWith('/@')) {
+    const parts = norm.slice(2).split('/').filter(Boolean);
+    const username = parts[0] ? decodeURIComponent(parts[0]) : '';
+    if (username) {
+      const rest = parts.slice(1).map((s) => decodeURIComponent(s));
+      if (rest.length === 0) {
+        return <UserProfileViewer username={username} subpath={[]} />;
+      }
+      if (rest[0] === 'post' && rest[1]) {
+        return <UserProfileViewer username={username} permlink={rest[1]} />;
+      }
+      if (RESERVED_PROFILE_FIRST_SEGMENTS.has(rest[0])) {
+        return <UserProfileViewer username={username} subpath={rest} />;
+      }
+      // Single non-reserved segment after @username -> standalone post view
+      return <UserProfileViewer username={username} permlink={rest[0]} />;
+    }
   }
 
   // Default to Home / ObjectExplorer (reads ?id= or defaults to 6nltas-recipes)
