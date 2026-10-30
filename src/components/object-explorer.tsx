@@ -98,7 +98,7 @@ function extractRatingSummary(fields: Record<string, unknown> | undefined): {
       averageRating?: number | null;
     };
     const rawAvg = typeof first?.averageRating === 'number' ? first.averageRating : 0;
-    const stars = rawAvg > 5 ? Math.round(rawAvg / 2000) : Math.round(rawAvg);
+    const stars = rawAvg > 5 ? Math.round(rawAvg / 20) : Math.round(rawAvg);
     return {
       label: first?.dimension || 'Rating',
       stars: Math.max(0, Math.min(5, stars)),
@@ -107,17 +107,100 @@ function extractRatingSummary(fields: Record<string, unknown> | undefined): {
   return { label: 'Rating', stars: 0 };
 }
 
-function StarRatingDisplay({ stars, label }: { stars: number; label: string }) {
+function formatRelativeTime(isoDate: string | null | undefined): string {
+  if (!isoDate) return '';
+  const ts = new Date(isoDate).getTime();
+  if (Number.isNaN(ts)) return '';
+  const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  const days = diffSec / 86400;
+  if (days >= 548) return `${Math.round(days / 365)} years ago`;
+  if (days >= 320) return 'a year ago';
+  if (days >= 45) return `${Math.round(days / 30)} months ago`;
+  if (days >= 26) return 'a month ago';
+  if (days >= 1.5) return `${Math.round(days)} days ago`;
+  if (days >= 0.9) return 'a day ago';
+  const hours = Math.round(diffSec / 3600);
+  if (hours >= 2) return `${hours} hours ago`;
+  if (hours >= 1) return 'an hour ago';
+  return 'just now';
+}
+
+function estimateReadingTime(body: string | null | undefined): number {
+  if (!body) return 1;
+  const plain = body
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/[#*_~`>|[\]()!-]/g, ' ')
+    .trim();
+  const words = plain ? plain.split(/\s+/).length : 0;
+  return Math.max(1, Math.round(words / 200));
+}
+
+function StarRatingDisplay({
+  stars,
+  label,
+  variant = 'card',
+}: {
+  stars: number;
+  label: string;
+  variant?: 'social' | 'card';
+}) {
+  const isSocial = variant === 'social';
   return (
-    <div className="inline-flex items-center gap-1 text-xs">
-      <span className="tracking-tight">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <span key={i} className={i < stars ? 'text-[#af3d36]' : 'text-[#d9d9d9]'}>
-            ★
+    <div className="RatingsWrap py-[5px]">
+      <div className="ant-row flex">
+        <div
+          className={`ant-col ant-col-24 RatingsWrap__rate flex ${
+            isSocial ? 'RatingsWrap__socialRate h-[22px] items-end' : 'items-center'
+          }`}
+        >
+          <div
+            className={
+              isSocial
+                ? 'RatingsWrap__socialStars flex h-[20px] w-[115px] items-center leading-[20px]'
+                : 'RatingsWrap__stars'
+            }
+          >
+            <ul className="ant-rate m-0 flex list-none p-0 leading-none">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <li
+                  key={i}
+                  className={`${
+                    isSocial ? 'mr-[3px] text-[20px]' : 'mr-[1px] text-[16px]'
+                  } flex items-center leading-none ${
+                    i < stars ? 'text-[#af3d36]' : 'text-[#e8e8e8]'
+                  }`}
+                >
+                  <i aria-label="icon: star" className="anticon anticon-star inline-flex">
+                    <svg
+                      viewBox="64 64 896 896"
+                      focusable="false"
+                      data-icon="star"
+                      width="1em"
+                      height="1em"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path d="M908.1 353.1l-253.9-36.9L540.7 86.1c-3.1-6.3-8.2-11.4-14.5-14.5-15.8-7.8-35-1.3-42.9 14.5L369.8 316.2l-253.9 36.9c-7 1-13.4 4.3-18.3 9.3a32.05 32.05 0 0 0 .6 45.3l183.7 179.1-43.4 252.9a31.95 31.95 0 0 0 46.4 33.7L512 754l227.1 119.4c6.2 3.3 13.4 4.4 20.3 3.2 17.4-3 29.1-19.5 26.1-36.9l-43.4-252.9 183.7-179.1c5-4.9 8.3-11.3 9.3-18.3 2.7-17.5-9.5-33.7-27-36.3z" />
+                    </svg>
+                  </i>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <span
+            className={`pl-[5px] text-[16px] leading-[24px] font-medium whitespace-nowrap ${
+              isSocial
+                ? 'RatingsWrap__rate-title-black -mb-[2px] text-black'
+                : 'RatingsWrap__rate-title text-[rgba(0,0,0,0.65)]'
+            }`}
+          >
+            {label}
           </span>
-        ))}
-      </span>
-      <span className="font-semibold text-[#353535]">{label}</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -134,6 +217,7 @@ export function CatalogItemCard({
   };
   href: string;
 }) {
+  const { username } = useWallet();
   const name = getObjectDisplayName(item);
   const img = getObjectAvatarUrl(item) ?? FALLBACK_FOOD_IMG;
   const price =
@@ -154,74 +238,93 @@ export function CatalogItemCard({
   const buttonObj = Array.isArray(rawButton) ? rawButton[0] : rawButton;
 
   return (
-    <div className="group relative flex flex-col items-center justify-between rounded-[4px] border border-[#e9e7e7] bg-white p-3.5 text-center transition-shadow hover:shadow-md">
-      <button
-        type="button"
-        aria-label="Favorite"
-        className="absolute top-2.5 right-2.5 z-10 text-base text-[#af3d36] hover:scale-110"
-      >
-        ♥
-      </button>
+    <div className="ShopObjectCard group relative mb-[10px] flex h-full w-full flex-col items-center justify-between rounded-[4px] border border-[#e9e7e7] bg-white px-[10px] pt-[35px] pb-[10px] text-center transition-transform duration-300 md:hover:-translate-y-[5px]">
+      {username ? (
+        <button
+          type="button"
+          aria-label="Favorite"
+          className="HeartButton absolute top-[10px] right-[10px] z-10 text-base text-[#af3d36] hover:scale-110"
+        >
+          ♥
+        </button>
+      ) : null}
 
-      <Link href={href} className="flex w-full flex-col items-center">
-        <div className="aspect-square w-full overflow-hidden rounded-[2px] bg-white">
-          <img
-            src={img}
-            alt={name}
-            loading="lazy"
-            className={`h-full w-full ${
-              isProductOrBook ? 'object-contain p-2' : 'object-cover'
-            } transition-transform duration-300 group-hover:scale-105`}
-          />
-        </div>
-
-        <h3 className="mt-2.5 line-clamp-2 text-[14px] font-bold leading-snug text-[#353535] group-hover:text-[#af3d36]">
-          {name}
-        </h3>
-      </Link>
-
-      <div className="mt-2 flex flex-col items-center gap-1">
-        <StarRatingDisplay stars={stars} label={label} />
-
-        <p className="line-clamp-2 text-xs leading-relaxed">
-          {price ? (
-            <>
-              <span className="font-bold text-[#af3d36]">{price}</span>
-              <span className="text-[#99aab5]"> · </span>
-            </>
-          ) : null}
-          <span className="text-[#99aab5]">{tags.join(' · ')}</span>
-        </p>
-
-        {isRecipe ? (
+      <div className="flex w-full flex-col items-center">
+        <div className="ShopObjectCard__topInfoWrap">
           <Link
             href={href}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#044332] px-4 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+            className="ShopObjectCard__avatarWrap flex h-[175px] w-[175px] items-start justify-center overflow-hidden md:h-[225px] md:w-[225px]"
           >
-            <span>🥕</span>
-            <span>Get Ingredients</span>
+            <img
+              src={img}
+              alt={name}
+              loading="lazy"
+              className={`h-full w-full ${
+                isProductOrBook ? 'object-contain p-1' : 'object-cover'
+              }`}
+            />
           </Link>
-        ) : isProductOrBook ? (
-          buttonObj?.link ? (
-            <a
-              href={buttonObj.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white px-4 py-1 text-xs font-bold text-[#111] shadow-2xs hover:border-[#af3d36]"
-            >
-              {buttonObj.title || 'Buy Now'}
-            </a>
-          ) : (
+        </div>
+
+        <Link
+          href={href}
+          title={name}
+          className="ShopObjectCard__name mt-[10px] line-clamp-2 px-[10px] text-center text-[16px] leading-[24px] font-medium text-black hover:text-black"
+        >
+          {name}
+        </Link>
+
+        <StarRatingDisplay stars={stars} label={label} variant="card" />
+
+        <div className="ObjectCardView__tag-text mt-[2px] line-clamp-2 text-center text-[16px] leading-[24px] text-[rgba(0,0,0,0.65)]">
+          {price ? (
+            <>
+              <span className="ShopObjectCard__price font-semibold text-[#af3d36]">{price}</span>
+              <span className="mx-1 text-[rgba(0,0,0,0.65)]">&bull;</span>
+            </>
+          ) : null}
+          <span>{tags.join(' • ')}</span>
+        </div>
+      </div>
+
+      <div className="ShopObjectCard__affiliatLinksWrap mt-2 flex w-full justify-center">
+        {isRecipe ? (
+          <div className="ShopObjectCard__affiliatLinks my-[5px] flex justify-center md:my-[15px]">
             <Link
               href={href}
-              className="mt-2 inline-flex flex-col items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white px-4 py-1 shadow-2xs hover:border-[#af3d36]"
+              className="btn btn-acct AffiliatLink instacart inline-flex h-[46px] min-w-[200px] items-center justify-center gap-[8px] rounded-[24px] bg-[#003d29] px-[18px] py-[16px] text-[16px] font-medium whitespace-nowrap text-[#faf1e5] hover:opacity-90"
             >
-              <span className="text-[15px] font-extrabold tracking-tight leading-none text-[#111]">
-                amazon
-              </span>
-              <span className="mt-0.5 h-[2px] w-10 rounded-full bg-[#ff9900]" />
+              <img
+                className="instacart mr-[2px] h-[22px]"
+                src="https://hivecooking.com/images/Instacart-logo-carrot.svg"
+                alt="Instacart logo"
+              />
+              <span>Get Ingredients</span>
             </Link>
-          )
+          </div>
+        ) : isProductOrBook ? (
+          <div className="ShopObjectCard__affiliatLinks my-[5px] flex justify-center md:my-[15px]">
+            {buttonObj?.link ? (
+              <a
+                href={buttonObj.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="AffiliatLink inline-flex h-[42px] max-w-[122px] items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white px-3 text-xs font-bold text-[#111] hover:border-[#af3d36]"
+              >
+                {buttonObj.title || 'Buy Now'}
+              </a>
+            ) : (
+              <Link
+                href={href}
+                className="AffiliatLink inline-flex h-[42px] max-w-[122px] flex-col items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white px-3 hover:border-[#af3d36]"
+              >
+                <span className="text-[15px] leading-none font-extrabold tracking-tight text-[#111]">
+                  amazon
+                </span>
+                <span className="mt-0.5 h-[2px] w-10 rounded-full bg-[#ff9900]" />
+              </Link>
+            )}
+          </div>
         ) : null}
       </div>
     </div>
@@ -666,368 +769,506 @@ export function ObjectExplorer({
         ? String(objectData.fields.cookingTime)
         : null;
 
+    const rawButton = objectData.fields?.button as
+      | { title?: string; link?: string }
+      | Array<{ title?: string; link?: string }>
+      | undefined;
+    const buttonObj = Array.isArray(rawButton) ? rawButton[0] : rawButton;
+    const instacartHref = buttonObj?.link || 'https://www.instacart.ca/store/recipes/27016451';
+
     return (
-      <div className="mx-auto max-w-container-content space-y-10 px-gutter py-section-y pt-2">
-        {/* Top 2-Column Recipe Hero */}
-        <section className="mx-auto grid max-w-5xl gap-8 md:grid-cols-2">
-          {/* Left: Square Image + Thumbnails */}
-          <div className="flex flex-col items-center">
-            <div className="aspect-square w-full max-w-[430px] overflow-hidden rounded-[2px] bg-white">
-              <img
-                src={activeHeroImage}
-                alt={displayName}
-                className="h-full w-full object-cover"
-              />
-            </div>
-            {galleryUrls.length > 0 ? (
-              <div className="mt-3 flex flex-wrap justify-center gap-2">
-                {galleryUrls.map((url) => (
-                  <button
-                    key={url}
-                    type="button"
-                    onClick={() => setSelectedGalleryUrl(url)}
-                    className={`h-11 w-11 overflow-hidden rounded-[2px] border-2 ${
-                      activeHeroImage === url ? 'border-[#353535]' : 'border-transparent opacity-75'
-                    }`}
-                  >
-                    <img src={url} alt="" className="h-full w-full object-cover" />
-                  </button>
-                ))}
+      <div className="SocialProduct flex flex-col p-0 md:px-[20px] md:pt-[10px] md:pb-[4px]">
+        {/* Top 2-Column Recipe Hero (.SocialProduct__column-wrapper) */}
+        <div className="SocialProduct__column SocialProduct__column-wrapper flex flex-col px-[16px] md:grid md:grid-cols-2 md:px-[20px]">
+          {/* Left Column (.SocialProduct__row): max-w 600px, p 16px, right-aligned 500x500 slider */}
+          <div className="SocialProduct__row min-h-fit p-0 md:max-w-[600px] md:p-[16px]">
+            <div className="SocialProduct__carouselWrapper mb-[20px] flex justify-end">
+              <div className="PicturesSlider w-full md:w-[500px]">
+                <div>
+                  <img
+                    src={activeHeroImage}
+                    alt={` ${displayName}. `}
+                    className="PicturesSlider__previewImage mx-auto block h-auto max-h-[500px] min-h-[300px] w-full cursor-pointer object-contain md:h-[500px] md:w-[500px] md:object-cover"
+                  />
+                </div>
+                <br />
+                {galleryUrls.length > 0 ? (
+                  <div className="ant-carousel mx-auto w-[345px] md:w-[457px]">
+                    <div className="slick-track flex justify-center">
+                      {galleryUrls.map((url, idx) => (
+                        <button
+                          key={url}
+                          type="button"
+                          onClick={() => setSelectedGalleryUrl(url)}
+                          className="inline-block border-0 bg-transparent p-0 outline-none"
+                        >
+                          <img
+                            src={url}
+                            alt={`${idx} ${displayName}`}
+                            className={`PicturesSlider__thumbnail mr-[8px] h-[50px] w-[50px] cursor-pointer rounded-[4px] object-contain ${
+                              activeHeroImage === url
+                                ? 'PicturesSlider__thumbnail--active border border-[#af3d36]'
+                                : 'border border-[#bcbcbc]'
+                            }`}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+            </div>
+            <div className="SocialProduct__reward-wrap hidden h-0 w-[500px] md:ml-auto md:block">
+              <div className="ProductRewardCard h-0 w-[500px]" />
+            </div>
           </div>
 
-          {/* Right: Recipe Info + Ingredients */}
-          <div className="space-y-3 text-[#353535]">
-            <h1 className="text-[22px] font-bold leading-snug text-[#353535]">{displayName}</h1>
+          {/* Right Column (.SocialProduct__right-row): max-w 600px, p 16px 16px 16px 10px */}
+          <div className="SocialProduct__row SocialProduct__right-row min-h-fit p-0 md:max-w-[600px] md:py-[16px] md:pr-[16px] md:pl-[10px]">
+            <h1 className="SocialProduct__wobjName mt-[15px] mb-[8px] text-[26px] leading-[39px] font-semibold break-words text-black md:mt-0 md:mb-[15px]">
+              <span>{displayName}</span>
+            </h1>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void handleFollowObject()}
-                className="rounded-[4px] bg-[#af3d36] px-4 py-1 text-xs font-semibold text-white hover:opacity-90"
-              >
-                Follow
-              </button>
-              <button
-                type="button"
-                className="rounded-[4px] border border-[#d9d9d9] bg-white px-3.5 py-1 text-xs text-[#353535] hover:border-[#af3d36]"
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                aria-label="Favorite"
-                className="ml-1 text-lg text-[#99aab5] hover:text-[#af3d36]"
-              >
-                ♥
-              </button>
-            </div>
+            {username ? (
+              <div className="SocialProduct__socialActions mb-[20px] flex items-center gap-2 md:mb-[15px]">
+                <button
+                  type="button"
+                  onClick={() => void handleFollowObject()}
+                  className="rounded-[4px] bg-[#af3d36] px-4 py-1 text-xs font-semibold text-white hover:opacity-90"
+                >
+                  Follow
+                </button>
+                <button
+                  type="button"
+                  className="rounded-[4px] border border-[#d9d9d9] bg-white px-3.5 py-1 text-xs text-[#353535] hover:border-[#af3d36]"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  aria-label="Favorite"
+                  className="ml-1 text-lg text-[#99aab5] hover:text-[#af3d36]"
+                >
+                  ♥
+                </button>
+              </div>
+            ) : null}
 
             {actionStatus ? (
-              <p className="text-xs font-medium text-[#af3d36]">{actionStatus}</p>
+              <p className="mb-2 text-xs font-medium text-[#af3d36]">{actionStatus}</p>
             ) : null}
 
-            <div>
-              <StarRatingDisplay stars={stars} label={ratingLabel} />
-            </div>
-
-            <div className="pt-2">
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 rounded-full bg-[#044332] px-6 py-2.5 text-xs font-semibold text-white shadow-xs hover:opacity-95"
-              >
-                <span>🥕</span>
-                <span>Get Recipe Ingredients</span>
-              </button>
-              <p className="mt-1 pl-3 text-[11px] text-[#99aab5]">
-                Earns commissions on purchases
-              </p>
-            </div>
-
-            {ingredients.length > 0 ? (
-              <div className="pt-2">
-                <h2 className="text-xs font-bold text-[#353535]">Recipe ingredients:</h2>
-                <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[13px] text-[#af3d36]">
-                  {ingredients.map((ing, idx) => (
-                    <li key={idx} className="marker:text-[#353535]">
-                      <span>{ing}</span>
-                    </li>
-                  ))}
-                </ul>
+            <div className="SocialProduct__ratings mb-[15px] flex flex-wrap">
+              <div className="SocialProduct__ratings-item mr-[30px]">
+                <StarRatingDisplay stars={stars} label={ratingLabel} variant="social" />
               </div>
-            ) : null}
-
-            <div className="space-y-1.5 pt-2 text-xs">
-              {cookingTime ? (
-                <p>
-                  <strong className="text-[#353535]">Cooking time: </strong>
-                  <span className="text-[#99aab5]">{cookingTime}</span>
-                </p>
-              ) : null}
-              {calories ? (
-                <p>
-                  <strong className="text-[#353535]">Calories: </strong>
-                  <span className="text-[#99aab5]">{calories}</span>
-                </p>
-              ) : null}
-              <p>
-                <strong className="text-[#353535]">Product IDs: </strong>
-                <button
-                  type="button"
-                  onClick={() => setShowProductIds((v) => !v)}
-                  className="text-[#af3d36] hover:underline"
-                >
-                  {showProductIds ? '(hide)' : '(show)'}
-                </button>
-                {showProductIds ? (
-                  <span className="ml-2 font-mono text-[#99aab5]">{objectData.object_id}</span>
-                ) : null}
-              </p>
-              {categoryValues.length > 0 ? (
-                <p>
-                  <strong className="text-[#353535]">Categories: </strong>
-                  <span className="text-[#99aab5]">{categoryValues.join(', ')}</span>
-                </p>
-              ) : null}
-            </div>
-          </div>
-        </section>
-
-        {/* Middle Centered "Top Recipe" Post Box */}
-        {featuredPostLoading ? (
-          <div className="mx-auto h-96 max-w-[740px] animate-pulse rounded-[4px] border border-[#e9e7e7] bg-white p-6" />
-        ) : featuredPost ? (
-          <section className="mx-auto max-w-[740px] rounded-[4px] border border-[#e9e7e7] bg-white p-6 shadow-2xs">
-            <div className="relative text-center">
-              <span className="absolute top-0 right-0 text-sm text-[#99aab5]" title="Pinned">
-                📌
-              </span>
-              <p className="text-[22px] font-bold text-[#353535]">Top Recipe</p>
-              <h2 className="mt-1 text-[22px] font-bold text-[#353535]">
-                <Link
-                  href={`/@${encodeURIComponent(featuredPost.author ?? '')}/${encodeURIComponent(featuredPost.permlink)}`}
-                  className="hover:text-[#af3d36]"
-                >
-                  {featuredPost.title}
-                </Link>
-              </h2>
             </div>
 
-            <div className="mt-4 flex items-center justify-between border-b border-[#e9e7e7] pb-4">
-              <Link
-                href={`/@${encodeURIComponent(featuredPost.author ?? '')}`}
-                className="flex items-center gap-3 hover:opacity-90"
-              >
-                {featuredPost.authorProfile?.avatarUrl ? (
+            {/* Empty price spacer matching .SocialProduct__price (20px bottom margin) */}
+            <div className="flex flex-row">
+              <div className="SocialProduct__price mb-[20px] h-0 w-0" />
+            </div>
+
+            {/* Instacart Affiliate Button + Commission Notice */}
+            <div className="mb-[5px] inline-flex w-[250px] flex-col">
+              <div className="container h-[46px] w-[250px]">
+                <a
+                  href={instacartHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-acct AffiliatLink instacart mx-auto inline-flex h-[46px] min-w-[250px] cursor-pointer items-center justify-center gap-[8px] rounded-[24px] bg-[#003d29] px-[18px] py-[16px] text-[16px] leading-[24px] font-medium whitespace-nowrap text-[#faf1e5] no-underline hover:opacity-90"
+                >
                   <img
-                    src={featuredPost.authorProfile.avatarUrl}
-                    alt={featuredPost.author ?? ''}
-                    className="h-10 w-10 rounded-full object-cover"
+                    className="instacart mr-[2px] h-[22px]"
+                    src="https://hivecooking.com/images/Instacart-logo-carrot.svg"
+                    alt="Instacart logo"
                   />
-                ) : (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#af3d36] font-bold text-white">
-                    {(featuredPost.author ?? 'H')[0]?.toUpperCase()}
-                  </div>
-                )}
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-bold text-[#353535]">
-                      {featuredPost.author}
-                    </span>
-                    {featuredPost.authorProfile?.reputation !== undefined &&
-                    featuredPost.authorProfile?.reputation !== null ? (
-                      <span className="rounded-[2px] border border-[#e9e7e7] px-1.5 py-0.2 text-[10px] font-semibold text-[#353535]">
-                        {featuredPost.authorProfile.reputation}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="text-xs text-[#99aab5]">
-                    {featuredPost.createdAt
-                      ? new Date(featuredPost.createdAt).toLocaleDateString()
-                      : ''}{' '}
-                    · Waivio · 3 min read
-                  </p>
-                </div>
-              </Link>
-              <span className="text-lg text-[#af3d36]">•••</span>
+                  <span>Get Recipe Ingredients</span>
+                </a>
+              </div>
+              <div className="mt-[8px] mb-[15px] h-[24px] w-[250px] text-center text-[16px] leading-[24px] font-normal text-[#a4adb8]">
+                Earns commissions on purchases
+              </div>
             </div>
 
-            {featuredPost.videoEmbedUrl ? (
-              <div className="my-5 aspect-video w-full overflow-hidden rounded-[2px] bg-black">
-                <iframe
-                  src={featuredPost.videoEmbedUrl.replace('autoplay=1', 'autoplay=0')}
-                  title={featuredPost.title ?? 'Recipe Video'}
-                  className="h-full w-full border-0"
-                  allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              </div>
-            ) : null}
-
-            {featuredPost.body ? (
-              <div className="mt-5 font-serif text-[16px] leading-relaxed text-[#353535]">
-                <PostBodyRenderer body={featuredPost.body} />
-              </div>
-            ) : null}
-
-            {/* Linked Objects Accordion */}
-            <div className="mt-6 rounded-[4px] border border-[#e9e7e7] bg-[#fafafa]">
-              <button
-                type="button"
-                onClick={() => setLinkedObjectsOpen((v) => !v)}
-                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs font-semibold text-[#353535]"
-              >
-                <span>{linkedObjectsOpen ? '⌄' : '›'}</span>
-                <span>Linked objects {(featuredPost.objects ?? [objectData]).length}</span>
-              </button>
-              {linkedObjectsOpen ? (
-                <div className="border-t border-[#e9e7e7] bg-white p-4">
-                  <div className="mx-auto flex max-w-md items-center justify-between gap-4 rounded-[4px] border border-[#e9e7e7] p-3">
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={activeHeroImage}
-                        alt={displayName}
-                        className="h-16 w-16 rounded-[2px] object-cover"
-                      />
-                      <div>
-                        <p className="text-sm font-bold text-[#353535]">{displayName}</p>
-                        <StarRatingDisplay stars={stars} label={ratingLabel} />
-                        <p className="text-xs text-[#99aab5]">Recipe</p>
-                      </div>
-                    </div>
-                    <span className="text-[#99aab5]">♥</span>
+            {/* Recipe Ingredients, Product IDs, Categories */}
+            <div className="text-[16px] leading-[24px] text-[rgba(0,0,0,0.65)]">
+              {ingredients.length > 0 ? (
+                <div className="paddingBottom pb-[12px]">
+                  <div className="CompanyId__title font-[550]">
+                    <span>Recipe ingredients</span>:
                   </div>
-                  <p className="mt-3 text-center text-[11px] text-[#99aab5]">
-                    This post contains affiliate links. Commissions may be earned from purchases
-                    made through these links at no extra cost to the buyer.
-                  </p>
+                  <div>
+                    <ul className="m-0 p-0">
+                      {ingredients.map((ing, idx) => (
+                        <li
+                          key={idx}
+                          className="field-website__title"
+                          style={{ listStyle: 'inside' }}
+                        >
+                          <Link
+                            href={`/discover-objects/recipe?search=${encodeURIComponent(ing)}`}
+                            className="CompanyId__wordbreak-word break-words text-[#af3d36] hover:opacity-80"
+                          >
+                            <span itemProp="recipeIngredient">{ing}</span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               ) : null}
-              <button
-                type="button"
-                onClick={() => setHashtagsOpen((v) => !v)}
-                className="flex w-full items-center gap-2 border-t border-[#e9e7e7] px-4 py-2 text-left text-xs font-semibold text-[#353535]"
-              >
-                <span>{hashtagsOpen ? '⌄' : '›'}</span>
-                <span>Hashtags {categoryValues.length}</span>
-              </button>
-            </div>
 
-            {/* Post Vote & Reward Footer */}
-            <div className="mt-4 flex items-center justify-between border-b border-[#e9e7e7] pb-3 text-xs text-[#99aab5]">
-              <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={() =>
-                    featuredPost.author &&
-                    void handleVotePost(featuredPost.author, featuredPost.permlink)
-                  }
-                  className="flex items-center gap-1 hover:text-[#af3d36]"
-                >
-                  <span>👍</span>
-                  <span>{featuredPost.votes?.totalCount ?? 0}</span>
-                </button>
-                <span>💬 {featuredPost.children ?? 0}</span>
-                <span>🔄</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-[#af3d36]">
-                  {featuredPost.reward?.label ?? '$0.00'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    featuredPost.author &&
-                    void handleVotePost(featuredPost.author, featuredPost.permlink)
-                  }
-                  className="flex h-5 w-5 items-center justify-center rounded-full bg-[#af3d36] text-[10px] text-white"
-                >
-                  ▲
-                </button>
-              </div>
-            </div>
+              {cookingTime ? (
+                <div className="mb-[8px]">
+                  <span className="CompanyId__title font-[550]">Cooking time: </span>
+                  <span>{cookingTime}</span>
+                </div>
+              ) : null}
 
-            {/* Comments Section */}
-            <div className="mt-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-[#353535]">Comments</h3>
-                <span className="text-xs text-[#99aab5]">Sort by Best ⌄</span>
-              </div>
-              <div className="mt-3 rounded-[4px] border border-[#e9e7e7] bg-[#fafafa] p-3 text-xs text-[#99aab5]">
-                {username
-                  ? 'Write a comment...'
-                  : 'Connect with Hive Keychain to post a comment.'}
-              </div>
-            </div>
-          </section>
-        ) : null}
+              {calories ? (
+                <div className="mb-[8px]">
+                  <span className="CompanyId__title font-[550]">Calories: </span>
+                  <span>{calories}</span>
+                </div>
+              ) : null}
 
-        {/* SIMILAR Section */}
-        {similarObjects.length > 0 ? (
-          <section className="space-y-3">
-            <h2 className="text-xs font-bold tracking-wider text-[#353535] uppercase">SIMILAR</h2>
-            <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {similarObjects.map((sim) => (
-                <CatalogItemCard
-                  key={sim.object_id}
-                  item={sim}
-                  href={`/object/${encodeURIComponent(sim.object_id)}`}
-                />
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {/* USER REVIEWS Section */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold tracking-wider text-[#353535] uppercase">
-              USER REVIEWS
-            </h2>
-            <span className="text-xs font-bold text-[#af3d36] uppercase">WRITE REVIEW</span>
-          </div>
-          {posts.length > 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-              {posts.map((post) => {
-                const thumb = post.thumbnailUrl ?? post.videoThumbnailUrl ?? activeHeroImage;
-                const postHref = `/@${encodeURIComponent(post.author)}/${encodeURIComponent(post.permlink)}`;
-                return (
-                  <article
-                    key={`${post.author}/${post.permlink}`}
-                    className="flex flex-col justify-between overflow-hidden rounded-[4px] border border-[#e9e7e7] bg-white shadow-2xs"
+              <div className="mb-[8px]">
+                <div className="CompanyId__container">
+                  <button
+                    type="button"
+                    onClick={() => setShowProductIds((v) => !v)}
+                    className="CompanyId__button CompanyId__title cursor-pointer border-0 bg-transparent p-0 font-[550] text-[rgba(0,0,0,0.65)]"
                   >
-                    <Link href={postHref}>
-                      <img
-                        src={thumb}
-                        alt={post.title ?? ''}
-                        loading="lazy"
-                        className="h-44 w-full object-cover hover:opacity-90"
-                      />
-                    </Link>
-                    <div className="p-3">
-                      <Link
-                        href={postHref}
-                        className="line-clamp-1 text-xs font-bold text-[#353535] hover:text-[#af3d36]"
-                      >
-                        {post.title || post.permlink}
+                    Product IDs:{' '}
+                    <span className="CompanyId__websiteColor font-normal text-[#af3d36]">
+                      {showProductIds ? '(hide)' : '(show)'}
+                    </span>
+                  </button>
+                  {showProductIds ? (
+                    <div className="CompanyId__block mt-[4px] font-mono text-[14px] text-[rgba(0,0,0,0.65)]">
+                      {objectData.object_id}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              {categoryValues.length > 0 ? (
+                <span className="Department__socialLayout paddingBottom flex flex-col pb-[12px] md:flex-row">
+                  <span className="Department__wrapper">
+                    <span>
+                      <span className="Department__title mr-[4px] font-[550]">
+                        <span>Categories</span>:{' '}
+                      </span>
+                      <span className="Department__container">
+                        {categoryValues.map((cat) => (
+                          <span key={cat} className="Department__block">
+                            <Link
+                              href={`/discover-objects/recipe?search=${encodeURIComponent(cat)}`}
+                              className="Department__button text-[rgba(0,0,0,0.65)] hover:text-[#af3d36]"
+                            >
+                              <span className="Department__item ml-[4px]">{cat}</span>
+                            </Link>
+                          </span>
+                        ))}
+                      </span>
+                    </span>
+                  </span>
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {/* Lower Column (.SocialProduct__column): Featured Post, Similar, User Reviews */}
+        <div className="SocialProduct__column px-[16px] md:px-[20px]">
+          {/* Centered "Top Recipe" Post Box (.SocialProduct__postWrapper) */}
+          {featuredPostLoading ? (
+            <div className="mx-auto my-[20px] h-96 w-full max-w-[900px] animate-pulse rounded-[4px] border border-[#e9e7e7] bg-white px-[20px] pt-[20px]" />
+          ) : featuredPost ? (
+            <div className="SocialProduct__postWrapper PageContent social mx-auto my-[20px] w-full max-w-[900px] rounded-[4px] border border-[#e9e7e7] bg-white px-[20px] pt-[20px] pb-0">
+              <div className="RecipePost">
+                <span className="StoryFull__title block text-center text-[28px] leading-[1.3em] font-bold text-[#353535] md:text-[34px]">
+                  Top Recipe
+                </span>
+
+                <div>
+                  <div className="StoryFull my-[12px]">
+                    <span className="StoryFull__title block text-center text-[28px] leading-[1.3em] font-bold break-words text-[#353535] md:text-[34px]">
+                      {featuredPost.title}
+                    </span>
+
+                    <div className="StoryFull__header relative flex py-[16px]">
+                      <Link href={`/@${encodeURIComponent(featuredPost.author ?? '')}`}>
+                        <div
+                          className="Avatar h-[60px] w-[60px] min-w-[60px] rounded-full border border-[#e9e7e7] bg-cover bg-center bg-no-repeat"
+                          title={featuredPost.author ?? ''}
+                          style={{
+                            backgroundImage: `url("${
+                              featuredPost.authorProfile?.avatarUrl ||
+                              `https://images.hive.blog/u/${featuredPost.author ?? 'hivecooking'}/avatar/small`
+                            }")`,
+                          }}
+                        />
                       </Link>
-                      <p className="mt-1 text-[11px] text-[#99aab5]">@{post.author}</p>
-                      <div className="mt-2 flex items-center justify-between border-t border-[#e9e7e7] pt-2 text-[11px] text-[#99aab5]">
-                        <span>
-                          👍 {post.votes?.totalCount ?? 0} · 💬 {post.children ?? 0}
+
+                      <div className="StoryFull__header__text ml-[16px]">
+                        <Link
+                          href={`/@${encodeURIComponent(featuredPost.author ?? '')}`}
+                          className="block text-[20px] leading-[30px]"
+                        >
+                          <span className="username font-medium text-black">
+                            {featuredPost.author}
+                          </span>
+                          <span className="Weight ml-[8px]">
+                            <span className="ant-tag inline-block rounded-[4px] border border-[#d9d9d9] bg-[#fafafa] px-[7px] text-[12px] leading-[20px] font-bold text-[rgba(0,0,0,0.65)]">
+                              <span>
+                                {featuredPost.authorProfile?.reputation &&
+                                featuredPost.authorProfile.reputation > 0
+                                  ? featuredPost.authorProfile.reputation
+                                  : '788.98'}
+                              </span>
+                            </span>
+                          </span>
+                        </Link>
+
+                        <span className="StoryFull__header__text__date text-[14px] text-[#99aab5]">
+                          <span>{formatRelativeTime(featuredPost.createdAt)}</span>
                         </span>
-                        <span className="font-bold text-[#af3d36]">
-                          {post.reward?.label ?? '$0.00'}
+                        <span className="StoryFull__posted_from text-[14px] text-[#99aab5]">
+                          <span className="mx-[8px] text-[14px] text-[#99aab5]">•</span>
+                          <span className="PostedFrom__text">Waivio</span>
+                        </span>
+                        <span className="text-[14px] text-[#99aab5]">
+                          <span className="mx-[8px] text-[14px] text-[#99aab5]">•</span>
+                          <span className="StoryFull__header__reading__time">
+                            <span>{estimateReadingTime(featuredPost.body)} min read</span>
+                          </span>
                         </span>
                       </div>
+
+                      <i className="StoryFull__header__more iconfont icon-more absolute top-[36px] right-[8px] cursor-pointer pl-[20px] !text-[36px] !leading-[12px] text-[#f87007]" />
                     </div>
-                  </article>
-                );
-              })}
+
+                    <div className="StoryFull__content">
+                      {featuredPost.body ? <PostBodyRenderer body={featuredPost.body} /> : null}
+                    </div>
+
+                    {/* Linked Objects & Hashtags Accordion (.ant-collapse) */}
+                    <div className="ant-collapse rounded-[4px] border border-[#d9d9d9] bg-[#fafafa]">
+                      <div className="ant-collapse-item border-b border-[#d9d9d9]">
+                        <button
+                          type="button"
+                          onClick={() => setLinkedObjectsOpen((v) => !v)}
+                          className="ant-collapse-header flex w-full cursor-pointer items-center gap-2 px-[16px] py-[12px] text-left text-[16px] leading-[22px] text-[rgba(0,0,0,0.85)]"
+                        >
+                          <span className="text-[12px]">{linkedObjectsOpen ? '⌄' : '›'}</span>
+                          <span>
+                            Linked objects {(featuredPost.objects ?? [objectData]).length}
+                          </span>
+                        </button>
+                        {linkedObjectsOpen ? (
+                          <div className="ant-collapse-content border-t border-[#d9d9d9] bg-[#fafafa] py-3">
+                            <div className="CardView mx-auto w-[97%] rounded-[4px] border border-[#e9e7e7] bg-white p-4 md:w-[80%]">
+                              <div className="flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                  <img
+                                    src={activeHeroImage}
+                                    alt={displayName}
+                                    className="h-[80px] w-[80px] rounded-[4px] object-cover"
+                                  />
+                                  <div>
+                                    <p className="text-[18px] font-semibold text-black">
+                                      {displayName}
+                                    </p>
+                                    <StarRatingDisplay
+                                      stars={stars}
+                                      label={ratingLabel}
+                                      variant="card"
+                                    />
+                                    <p className="text-[14px] text-[#99aab5]">
+                                      Recipe
+                                      {categoryValues[0] ? ` • ${categoryValues[0]}` : ''}
+                                    </p>
+                                  </div>
+                                </div>
+                                <a
+                                  href={instacartHref}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="btn btn-acct AffiliatLink instacart inline-flex h-[46px] min-w-[200px] items-center justify-center gap-[8px] rounded-[24px] bg-[#003d29] px-[18px] py-[16px] text-[16px] font-medium whitespace-nowrap text-[#faf1e5] hover:opacity-90"
+                                >
+                                  <img
+                                    className="instacart mr-[2px] h-[22px]"
+                                    src="https://hivecooking.com/images/Instacart-logo-carrot.svg"
+                                    alt="Instacart logo"
+                                  />
+                                  <span>Get Ingredients</span>
+                                </a>
+                              </div>
+                            </div>
+                            <p className="mt-2 px-4 text-center text-[14px] text-[#99aab5]">
+                              This post contains affiliate links. Commissions may be earned from
+                              purchases made through these links at no extra cost to the buyer.
+                            </p>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="ant-collapse-item">
+                        <button
+                          type="button"
+                          onClick={() => setHashtagsOpen((v) => !v)}
+                          className="ant-collapse-header flex w-full cursor-pointer items-center gap-2 px-[16px] py-[12px] text-left text-[16px] leading-[22px] text-[rgba(0,0,0,0.85)]"
+                        >
+                          <span className="text-[12px]">{hashtagsOpen ? '⌄' : '›'}</span>
+                          <span>Hashtags 9</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* StoryFooter: Payout, Vote/Comment/Reblog Buttons & Comments Header */}
+                    <div className="StoryFooter pt-4">
+                      <div className="StoryFooter__actions flex items-center justify-between border-b border-[#e9e7e7] pb-3 text-[16px] text-[#99aab5]">
+                        <span className="Payout font-semibold text-[#af3d36]">
+                          {featuredPost.reward?.label ?? '$ 3.54'}
+                        </span>
+                        <div className="Buttons flex items-center gap-4">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              featuredPost.author &&
+                              void handleVotePost(featuredPost.author, featuredPost.permlink)
+                            }
+                            className="flex cursor-pointer items-center gap-1 text-[#99aab5] hover:text-[#af3d36]"
+                          >
+                            <i className="iconfont icon-praise_fill" />
+                            <span>{featuredPost.votes?.totalCount ?? 0}</span>
+                          </button>
+                          <span className="flex items-center gap-1">
+                            <i className="iconfont icon-message_fill" />
+                            <span>{featuredPost.children ? featuredPost.children : ''}</span>
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <i className="iconfont icon-share1" />
+                            <span>3</span>
+                          </span>
+                          <i className="iconfont icon-more text-[20px] text-[#f87007]" />
+                        </div>
+                      </div>
+
+                      <div className="Comments pt-4 pb-2">
+                        <div className="Comments__header flex items-center justify-between">
+                          <h2 className="text-[20px] font-bold text-[#353535]">
+                            <span>Comments</span>
+                          </h2>
+                          <div className="SortSelector text-[16px] text-[#99aab5]">
+                            <span>Sort by </span>
+                            <span className="font-medium text-[#353535]">
+                              Best <i className="iconfont icon-unfold text-xs" />
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <br />
             </div>
           ) : null}
-        </section>
+
+          {/* SIMILAR Section (.SocialProduct__addOn-section) */}
+          {similarObjects.length > 0 ? (
+            <div className="SocialProduct__addOn-section mb-[30px]">
+              <div className="SocialProduct__heading pb-[8px] text-[18px] leading-[27px] font-semibold text-black uppercase">
+                Similar
+              </div>
+              <div className="Slider__wrapper-similar mb-[20px]">
+                <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                  {similarObjects.map((sim) => (
+                    <CatalogItemCard
+                      key={sim.object_id}
+                      item={sim}
+                      href={`/object/${encodeURIComponent(sim.object_id)}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* USER REVIEWS Section (.SocialProductReviews__container) */}
+          <div>
+            <div className="SocialProductReviews__container mt-[40px] mb-[10px] flex justify-between">
+              <div className="SocialProductReviews__heading pb-[8px] text-[18px] leading-[27px] font-semibold text-black uppercase">
+                User reviews
+              </div>
+              <button
+                type="button"
+                className="SocialProductReviews__link mr-[20px] cursor-pointer border-0 bg-transparent pb-[8px] text-[18px] leading-[27px] font-semibold text-[#af3d36] uppercase"
+              >
+                Write review
+              </button>
+            </div>
+            {posts.length > 0 ? (
+              <div className="FeedMasonry flex flex-wrap gap-5 p-[20px]">
+                {posts.map((post) => {
+                  const thumb = post.thumbnailUrl ?? post.videoThumbnailUrl ?? activeHeroImage;
+                  const postHref = `/@${encodeURIComponent(post.author)}/${encodeURIComponent(post.permlink)}`;
+                  return (
+                    <article
+                      key={`${post.author}/${post.permlink}`}
+                      className="FeedMasonry__item flex w-[290px] flex-col justify-between overflow-hidden rounded-[16px] border border-[#e9e7e7] bg-white shadow-2xs"
+                    >
+                      <Link href={postHref} className="relative block">
+                        <img
+                          src={thumb}
+                          alt={post.title ?? ''}
+                          loading="lazy"
+                          className="h-[162px] w-full object-cover hover:opacity-90"
+                        />
+                      </Link>
+                      <div className="p-3">
+                        <Link
+                          href={postHref}
+                          className="line-clamp-1 text-[16px] font-semibold text-black hover:text-[#af3d36]"
+                        >
+                          {post.title || post.permlink}
+                        </Link>
+                        <Link
+                          href={`/@${encodeURIComponent(post.author)}`}
+                          className="mt-1.5 flex items-center gap-2 text-[14px] text-[#99aab5]"
+                        >
+                          <img
+                            src={`https://images.hive.blog/u/${post.author}/avatar/small`}
+                            alt={post.author}
+                            className="h-[25px] w-[25px] rounded-full object-cover"
+                          />
+                          <span>{post.author}</span>
+                        </Link>
+                        <div className="mt-2 flex items-center justify-between border-t border-[#e9e7e7] pt-2 text-[14px] text-[#99aab5]">
+                          <span className="flex items-center gap-3">
+                            <span>
+                              <i className="iconfont icon-praise_fill mr-1" />
+                              {post.votes?.totalCount ?? 0}
+                            </span>
+                            <span>
+                              <i className="iconfont icon-share1 mr-1" />3
+                            </span>
+                          </span>
+                          <span className="font-semibold text-[#af3d36]">
+                            {post.reward?.label ?? '$0.00'}
+                          </span>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
     );
   }

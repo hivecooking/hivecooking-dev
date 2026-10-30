@@ -2,58 +2,97 @@
 
 import { useMemo } from 'react';
 
-function renderMarkdownToHtml(raw: string): string {
-  let html = raw;
+function extractYoutubeVideoId(url: string): string | null {
+  try {
+    const cleaned = url.trim().replace(/\\([\\`*_{}[\]()#+\-.!~:])/g, '$1');
+    const watchMatch = cleaned.match(
+      /^(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})(?:[&?][^\s<]*)?$/i,
+    );
+    return watchMatch?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
 
-  // Strip script/style/iframe tags from untrusted markdown for safety
-  html = html.replace(/<(script|style|iframe|object|embed)[^>]*>[\s\S]*?<\/\1>/gi, '');
+function unescapeMarkdownEscapes(text: string): string {
+  return text.replace(/\\([\\`*_{}[\]()#+\-.!~:])/g, '$1');
+}
+
+function renderMarkdownToHtml(raw: string): string {
+  let html = raw.replace(/\r\n/g, '\n');
+
+  // Strip script/style/object/embed tags from untrusted markdown for safety
+  html = html.replace(/<(script|style|object|embed)[^>]*>[\s\S]*?<\/\1>/gi, '');
 
   // Convert markdown images ![alt](url)
   html = html.replace(
     /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g,
-    '<img src="$2" alt="$1" class="my-4 max-h-[520px] w-auto rounded-card object-contain mx-auto shadow-xs" loading="lazy" />',
+    '<img src="$2" alt="$1" class="my-4 max-h-[520px] w-auto object-contain mx-auto" loading="lazy" />',
   );
 
-  // Convert markdown links [text](url)
-  html = html.replace(
-    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
-    '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-accent underline hover:opacity-80">$1</a>',
-  );
+  // Convert markdown links [text](url) — rewrite waivio.com/hivecooking.com /object/ links to local relative paths
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, label: string, rawUrl: string) => {
+    const cleanUrl = unescapeMarkdownEscapes(rawUrl);
+    const localObjMatch = cleanUrl.match(
+      /^https?:\/\/(?:www\.)?(?:waivio\.com|hivecooking\.com)\/object\/([^\s/?#]+)/i,
+    );
+    if (localObjMatch?.[1]) {
+      return `<a href="/object/${localObjMatch[1]}" class="text-[#af3d36] hover:underline">${unescapeMarkdownEscapes(label)}</a>`;
+    }
+    return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-[#af3d36] hover:underline">${unescapeMarkdownEscapes(label)}</a>`;
+  });
 
-  // Convert headings
-  html = html.replace(/^####\s+(.+)$/gm, '<h4 class="mt-5 mb-2 font-semibold text-fg">$1</h4>');
-  html = html.replace(
-    /^###\s+(.+)$/gm,
-    '<h3 class="mt-6 mb-2 text-lg font-bold text-fg">$1</h3>',
-  );
-  html = html.replace(
-    /^##\s+(.+)$/gm,
-    '<h2 class="mt-7 mb-3 text-xl font-bold text-fg border-b border-border pb-1">$1</h2>',
-  );
-  html = html.replace(
-    /^#\s+(.+)$/gm,
-    '<h1 class="mt-7 mb-3 text-2xl font-bold text-fg">$1</h1>',
-  );
+  // Convert headings (only unescaped # at start of line)
+  html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
 
   // Bold & italic
   html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+  html = html.replace(/(^|[^\\*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
 
-  // Bullet list items
-  html = html.replace(/^\s*[-*]\s+(.+)$/gm, '<li class="ml-5 list-disc py-0.5">$1</li>');
-
-  // Convert double newlines to paragraph breaks
+  // Split by double newlines into blocks matching Waivio's Body--full paragraph generator
   const blocks = html.split(/\n{2,}/);
-  return blocks
-    .map((b) => {
-      const trimmed = b.trim();
-      if (!trimmed) return '';
-      if (/^<(h[1-6]|ul|ol|li|div|p|img|blockquote|hr|table)/i.test(trimmed)) {
-        return trimmed;
-      }
-      return `<p class="my-3 leading-relaxed">${trimmed.replace(/\n/g, '<br />')}</p>`;
-    })
-    .join('\n');
+  const renderedBlocks: string[] = [];
+
+  for (const rawBlock of blocks) {
+    const trimmed = rawBlock.trim();
+    if (!trimmed) continue;
+
+    // Standalone YouTube URL block -> inline PostFeedEmbed__container--youtube with surrounding <p><br></p>
+    const ytId = extractYoutubeVideoId(trimmed);
+    if (ytId) {
+      renderedBlocks.push('<p class="mb-[16px]"><br /></p>');
+      renderedBlocks.push(
+        `<div class="PostFeedEmbed__container PostFeedEmbed__container--youtube relative mb-[16px] w-full pb-[56%]"><iframe width="100%" height="400" src="https://www.youtube.com/embed/${ytId}?autoplay=false" frameborder="0" scrolling="no" allowfullscreen class="absolute top-0 left-0 h-full w-full border-0"></iframe></div>`,
+      );
+      renderedBlocks.push('<p class="mb-[16px]"><br /></p>');
+      continue;
+    }
+
+    let unescaped = unescapeMarkdownEscapes(trimmed);
+
+    // Autolink bare https:// URLs that aren't already inside href="..." or >...<
+    unescaped = unescaped.replace(
+      /(^|[\s(])(https?:\/\/[^\s<)"']+?)([.,;!?)]?(?=\s|$))/g,
+      '$1<a href="$2" target="_blank" rel="noopener noreferrer" class="text-[#af3d36] hover:underline">$2</a>$3',
+    );
+
+    // Autolink #hashtags (e.g. #carbonara)
+    unescaped = unescaped.replace(
+      /(^|\s)#([a-zA-Z0-9_-]+)/g,
+      '$1<a href="/object/$2" class="text-[#af3d36] hover:underline">#$2</a>',
+    );
+
+    if (/^<(h[1-6]|ul|ol|li|div|p|img|blockquote|hr|table|iframe)/i.test(unescaped)) {
+      renderedBlocks.push(unescaped);
+    } else {
+      renderedBlocks.push(`<p class="mb-[16px] leading-[30px]">${unescaped.replace(/\n/g, '<br />')}</p>`);
+    }
+  }
+
+  return renderedBlocks.join('\n');
 }
 
 export function PostBodyRenderer({ body }: { body: string }) {
@@ -61,7 +100,7 @@ export function PostBodyRenderer({ body }: { body: string }) {
 
   return (
     <div
-      className="prose max-w-none text-body text-fg [&_a]:text-accent [&_a]:underline [&_img]:mx-auto [&_img]:my-4 [&_img]:max-h-[520px] [&_img]:rounded-card"
+      className="Body Body--full px-0 pt-[15px] pb-[18px] font-['Source_Serif_Pro',serif] text-[20px] leading-[30px] font-normal text-[rgba(0,0,0,0.84)] md:px-[12px] md:pt-0 [&_a]:text-[#af3d36] [&_b]:text-black [&_strong]:text-black"
       dangerouslySetInnerHTML={{ __html: renderedHtml }}
     />
   );

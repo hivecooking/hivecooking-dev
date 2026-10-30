@@ -345,11 +345,20 @@ export function SiteNav() {
                   title={locale === 'en-US' ? 'Switch to Arabic' : 'Switch to English'}
                   className="Topnav__link flex h-[55px] w-[26px] cursor-pointer items-center justify-center text-[#af3d36]"
                 >
-                  <i className="iconfont icon-language ml-[5px] text-[28px] leading-[28.8px] font-thin text-[#af3d36]" />
+                  <i className="iconfont icon-language ml-[5px] !text-[26px] leading-[28.8px] font-thin text-[#af3d36]" />
                 </button>
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Floating Bottom-Right AI Button (.BBackTop) matching hivecooking.com */}
+      <div className="BBackTop fixed right-0 bottom-[60px] z-[1500] h-0">
+        <div className="primary-modal BBackTop__container relative mx-[22.5px]">
+          <div className="BBackTop_button-ai float-right block h-[45px] w-[45px] cursor-pointer rounded-full bg-[#af3d36] pt-[7px] pl-[10px] text-[26px] leading-[30px] font-medium text-white shadow-[2px_2px_5px_0_rgba(31,31,31,0.5)] hover:bg-[#93312b]">
+            AI
+          </div>
         </div>
       </div>
 
