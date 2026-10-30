@@ -86,21 +86,22 @@ function NavTabsBar() {
           <button
             type="button"
             onClick={() => setMoreOpen((v) => !v)}
-            className="inline-flex h-[25px] w-[200px] cursor-pointer items-center justify-center gap-1 text-center text-[16px] leading-[24px] font-normal tracking-normal text-[#af3d36] uppercase"
+            className="inline-block h-[25px] w-[200px] cursor-pointer text-center text-[16px] leading-[24px] font-normal tracking-normal text-[#af3d36] uppercase"
           >
-            <span>MORE</span>
-            <svg
-              viewBox="0 0 1024 1024"
-              focusable="false"
-              data-icon="caret-down"
-              width="1em"
-              height="1em"
-              fill="currentColor"
-              aria-hidden="true"
-              className="inline-block text-[14px]"
-            >
-              <path d="M840.4 300H183.6c-19.7 0-30.7 20.8-18.5 35l328.4 380.8c9.4 10.9 27.5 10.9 37 0L858.9 335c12.2-14.2 1.2-35-18.5-35z" />
-            </svg>
+            more{' '}
+            <i aria-label="icon: caret-down" className="inline-block align-[-0.125em] text-[14px]">
+              <svg
+                viewBox="0 0 1024 1024"
+                focusable="false"
+                data-icon="caret-down"
+                width="1em"
+                height="1em"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M840.4 300H183.6c-19.7 0-30.7 20.8-18.5 35l328.4 380.8c9.4 10.9 27.5 10.9 37 0L858.9 335c12.2-14.2 1.2-35-18.5-35z" />
+              </svg>
+            </i>
           </button>
 
           {moreOpen ? (
@@ -224,13 +225,11 @@ export function SiteNav() {
 
         {/* Predictive Search Box (.Header__search) */}
         <div ref={searchBoxRef} className="Header__search relative hidden md:flex md:w-[40%] md:items-center">
-          <form onSubmit={handleSearchSubmit} className="relative flex w-full items-center">
+          <form onSubmit={handleSearchSubmit} className="relative flex h-[32px] w-full items-center">
             <i
               aria-hidden="true"
               className="iconfont icon-search pointer-events-none absolute left-[5px] text-[20px] leading-none text-[#af3d36]"
-            >
-              &#xe77c;
-            </i>
+            />
             <input
               type="text"
               value={searchQuery}
@@ -239,7 +238,7 @@ export function SiteNav() {
               }}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('header.searchPlaceholder')}
-              className="h-[32px] w-full rounded-[4px] border border-[#af3d36] bg-white py-[4px] pr-[40px] pl-[30px] text-[16px] font-normal text-[rgba(0,0,0,0.65)] placeholder:text-[#bfbfbf] focus:shadow-[0_0_5px_0_#93312b] focus:outline-none"
+              className="-mt-[4px] h-[32px] w-full rounded-[4px] border border-[#af3d36] bg-white py-[4px] pr-[40px] pl-[30px] text-[16px] font-normal text-[rgba(0,0,0,0.65)] placeholder:text-[#bfbfbf] focus:shadow-[0_0_5px_0_#93312b] focus:outline-none"
             />
           </form>
 
@@ -346,9 +345,7 @@ export function SiteNav() {
                   title={locale === 'en-US' ? 'Switch to Arabic' : 'Switch to English'}
                   className="Topnav__link flex h-[55px] w-[26px] cursor-pointer items-center justify-center text-[#af3d36]"
                 >
-                  <i className="iconfont icon-language ml-[5px] text-[28px] leading-[28.8px] font-thin text-[#af3d36]">
-                    &#xe8f6;
-                  </i>
+                  <i className="iconfont icon-language ml-[5px] text-[28px] leading-[28.8px] font-thin text-[#af3d36]" />
                 </button>
               </div>
             </div>

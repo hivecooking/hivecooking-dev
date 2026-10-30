@@ -573,7 +573,7 @@ export function ObjectExplorer({
                     key={item.object_id}
                     className="Checklist__listItems relative mb-[10px] flex w-[calc(50%-5px)] flex-col rounded-[4px] sm:w-[calc(33.3333%-6.66667px)] lg:w-[calc(25%-7.5px)] xl:w-[calc(20%-8px)]"
                   >
-                    <Link href={itemHref} title={itemName} className="block w-full">
+                    <Link href={itemHref} title={itemName} className="flex w-full flex-col">
                       <div
                         className="Checklist__itemsAvatar flex h-[calc(50vw-5px)] w-full items-center justify-center rounded-t-[4px] border border-b-0 border-[#e9e7e7] bg-white bg-cover bg-[50%_center] bg-no-repeat transition-shadow duration-500 hover:shadow-[inset_-11px_11px_24px_-14px_#93312b] sm:h-[calc(33.3333vw-6.66667px)] lg:h-[calc(25vw-7.5px)] xl:h-[calc(20vw-8px)]"
                         style={{ backgroundImage: `url("${itemImg}")` }}
@@ -584,11 +584,11 @@ export function ObjectExplorer({
                           alt={itemName}
                         />
                       </div>
-                      <span className="Checklist__itemsTitle inline-block h-[33px] w-full truncate rounded-b-[4px] bg-[#af3d36] px-[10px] py-[3px] text-[18px] leading-[27px] font-semibold text-white">
+                      <span className="Checklist__itemsTitle block h-[33px] w-full rounded-b-[4px] bg-[#af3d36] px-[10px] py-[3px] text-[18px] leading-[27px] font-semibold text-white">
                         {itemName}
                         {typeof count === 'number' && count >= 0 ? (
                           <span className="items-count ml-[5px] inline-block font-semibold text-white">
-                            ({count})
+                            {' '}({count})
                           </span>
                         ) : null}
                       </span>
