@@ -9,7 +9,6 @@ import {
   persistLocale,
   resolveClientLocale,
   type LocaleId,
-  LOCALES,
 } from '@/i18n';
 import { WalletProvider } from '@/modules/wallet';
 
@@ -27,44 +26,23 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     document.documentElement.dataset.theme = 'light';
   }, [locale]);
 
-  const messages = useMemo(() => loadMessages(locale), [locale]);
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const next = (e as CustomEvent<LocaleId>).detail;
+      if (next) {
+        persistLocale(next);
+        setLocale(next);
+      }
+    };
+    window.addEventListener('hivecooking:set-locale', handler);
+    return () => window.removeEventListener('hivecooking:set-locale', handler);
+  }, []);
 
-  const switchLocale = (next: LocaleId) => {
-    persistLocale(next);
-    setLocale(next);
-  };
+  const messages = useMemo(() => loadMessages(locale), [locale]);
 
   return (
     <I18nProvider locale={locale} messages={messages}>
-      <WalletProvider>
-        <LocaleSwitcher current={locale} onChange={switchLocale} />
-        {children}
-      </WalletProvider>
+      <WalletProvider>{children}</WalletProvider>
     </I18nProvider>
-  );
-}
-
-function LocaleSwitcher({
-  current,
-  onChange,
-}: {
-  current: LocaleId;
-  onChange: (locale: LocaleId) => void;
-}) {
-  return (
-    <div className="fixed end-3 top-3 z-50 flex gap-2">
-      {LOCALES.map((id) => (
-        <button
-          key={id}
-          type="button"
-          onClick={() => onChange(id)}
-          className={`rounded-btn border border-border px-2 py-1 text-body-sm ${
-            current === id ? 'bg-accent text-accent-fg' : 'bg-surface text-fg'
-          }`}
-        >
-          {id === 'en-US' ? 'EN' : 'AR'}
-        </button>
-      ))}
-    </div>
   );
 }

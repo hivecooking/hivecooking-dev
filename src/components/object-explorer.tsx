@@ -437,9 +437,9 @@ export function ObjectExplorer({
 
   if (loading) {
     return (
-      <div className="space-y-6 py-4">
+      <div className="m-[5px] space-y-6 md:m-[20px]">
         <div className="h-6 w-64 animate-pulse rounded-[4px] bg-secondary" />
-        <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {Array.from({ length: 15 }).map((_, idx) => (
             <div
               key={idx}
@@ -501,88 +501,116 @@ export function ObjectExplorer({
   const activeHeroImage = selectedGalleryUrl ?? galleryUrls[0] ?? FALLBACK_FOOD_IMG;
 
   // ============================================================================
-  // 1. LIST OBJECT LAYOUT (Matches hivecooking.com 1:1)
+  // 1. LIST OBJECT LAYOUT (Matches hivecooking.com .Checklist 1:1)
   // ============================================================================
   if (objectData.object_type === 'list') {
+    const allSubLists =
+      sortedItems.length > 0 && sortedItems.every((item) => item.object_type === 'list');
+
     return (
-      <div className="space-y-4">
-        {/* Compact Top Bar: Breadcrumb + [Edit] on left, Commission Notice on right */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-          <div className="flex flex-wrap items-center gap-2 text-[16px] text-[#99aab5]">
-            {!isRootList ? (
-              <>
-                {breadcrumbs.map((crumb, idx) => {
-                  const priorPath = serializeBreadcrumbs(breadcrumbs.slice(0, idx));
-                  const href = `/object/${encodeURIComponent(crumb.id)}${
-                    priorPath ? `?path=${encodeURIComponent(priorPath)}` : ''
-                  }`;
-                  return (
-                    <span key={`${crumb.id}-${idx}`} className="flex items-center gap-1.5">
-                      <Link href={href} className="hover:text-[#af3d36] hover:underline">
-                        {crumb.name}
-                      </Link>
-                      <span>&gt;</span>
-                    </span>
-                  );
-                })}
-                <span>{displayName}</span>
-              </>
+      <div className="Checklist m-[5px] md:m-[20px]">
+        {/* Top Breadcrumbs + Commission Notice (.Checklist__breadcrumbsContainre) */}
+        <div className="Checklist__breadcrumbsContainre flex flex-col items-center justify-between md:h-[47px] md:flex-row">
+          <div className="flex items-center">
+            <div className="Breadcrumbs my-[10px] flex h-[27px] items-center text-[18px] leading-[27px] font-normal text-[#99aab5]">
+              {!isRootList ? (
+                <>
+                  {breadcrumbs.map((crumb, idx) => {
+                    const priorPath = serializeBreadcrumbs(breadcrumbs.slice(0, idx));
+                    const href = `/object/${encodeURIComponent(crumb.id)}${
+                      priorPath ? `?path=${encodeURIComponent(priorPath)}` : ''
+                    }`;
+                    return (
+                      <span key={`${crumb.id}-${idx}`} className="flex items-center">
+                        <Link
+                          href={href}
+                          className="text-[#99aab5] hover:text-[#af3d36] hover:underline"
+                        >
+                          {crumb.name}
+                        </Link>
+                        <span className="mx-1.5">&gt;</span>
+                      </span>
+                    );
+                  })}
+                  <Link
+                    href={`/object/${encodeURIComponent(objectData.object_id)}`}
+                    className="text-[#99aab5] hover:text-[#af3d36]"
+                  >
+                    {displayName}
+                  </Link>
+                </>
+              ) : null}
+            </div>
+            {username ? (
+              <button
+                type="button"
+                onClick={() => void handleFollowObject()}
+                className="ml-3 h-[30px] rounded-[4px] border border-[#e9e7e7] bg-white px-[15px] text-[16px] font-normal text-[rgba(0,0,0,0.65)] hover:border-[#af3d36]"
+              >
+                Edit
+              </button>
             ) : null}
-            <button
-              type="button"
-              onClick={() => void handleFollowObject()}
-              className="rounded-[4px] border border-[#d9d9d9] bg-white px-3 py-0.5 text-xs font-normal text-[#353535] hover:border-[#af3d36]"
-            >
-              Edit
-            </button>
           </div>
 
-          <span className="text-xs text-[#99aab5]">Earns commissions on purchases</span>
+          <div className="text-right text-[16px] leading-[24px] font-normal text-[#a4adb8]">
+            Earns commissions on purchases
+          </div>
         </div>
 
-        {/* 5-Column Grid: Square Red-Bar Tiles for Sub-Lists, Vertical Cards for Products/Recipes */}
+        {/* 5-Column Flex Wrap Grid (.Checklist__list) */}
         {sortedItems.length > 0 ? (
-          <section>
-            <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {sortedItems.map((item: ResolvedListItem) => {
-                const itemHref = `/object/${encodeURIComponent(item.object_id)}?path=${encodeURIComponent(serializedNextPath)}`;
+          <div className="Checklist__list flex flex-wrap gap-[10px]">
+            {sortedItems.map((item: ResolvedListItem) => {
+              const itemHref = `/object/${encodeURIComponent(item.object_id)}?path=${encodeURIComponent(serializedNextPath)}`;
 
-                if (item.object_type === 'list') {
-                  const itemName = getObjectDisplayName(item);
-                  const itemImg = getObjectAvatarUrl(item) ?? FALLBACK_FOOD_IMG;
-                  const count = item.listItemsCount;
-                  const labelWithCount =
-                    typeof count === 'number' && count > 0 ? `${itemName} (${count})` : itemName;
+              if (item.object_type === 'list') {
+                const itemName = getObjectDisplayName(item);
+                const itemImg = getObjectAvatarUrl(item) ?? FALLBACK_FOOD_IMG;
+                const count = item.listItemsCount;
 
-                  return (
-                    <Link
-                      key={item.object_id}
-                      href={itemHref}
-                      className="group flex flex-col overflow-hidden rounded-[4px] border border-[#e9e7e7] bg-white transition-shadow hover:shadow-md"
-                    >
-                      <div className="relative aspect-square w-full overflow-hidden bg-white">
+                return (
+                  <div
+                    key={item.object_id}
+                    className="Checklist__listItems relative mb-[10px] flex w-[calc(50%-5px)] flex-col rounded-[4px] sm:w-[calc(33.3333%-6.66667px)] lg:w-[calc(25%-7.5px)] xl:w-[calc(20%-8px)]"
+                  >
+                    <Link href={itemHref} title={itemName} className="block w-full">
+                      <div
+                        className="Checklist__itemsAvatar flex h-[calc(50vw-5px)] w-full items-center justify-center rounded-t-[4px] border border-b-0 border-[#e9e7e7] bg-white bg-cover bg-[50%_center] bg-no-repeat transition-shadow duration-500 hover:shadow-[inset_-11px_11px_24px_-14px_#93312b] sm:h-[calc(33.3333vw-6.66667px)] lg:h-[calc(25vw-7.5px)] xl:h-[calc(20vw-8px)]"
+                        style={{ backgroundImage: `url("${itemImg}")` }}
+                      >
                         <img
+                          className="Checklist__itemsAvatarImg hidden"
                           src={itemImg}
                           alt={itemName}
-                          loading="lazy"
-                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                         />
                       </div>
-                      <div className="flex min-h-[34px] items-center bg-[#af3d36] px-2.5 py-1.5 text-left text-[15px] font-bold text-white">
-                        <span className="line-clamp-1 leading-snug">{labelWithCount}</span>
-                      </div>
+                      <span className="Checklist__itemsTitle inline-block h-[33px] w-full truncate rounded-b-[4px] bg-[#af3d36] px-[10px] py-[3px] text-[18px] leading-[27px] font-semibold text-white">
+                        {itemName}
+                        {typeof count === 'number' && count >= 0 ? (
+                          <span className="items-count ml-[5px] inline-block font-semibold text-white">
+                            ({count})
+                          </span>
+                        ) : null}
+                      </span>
                     </Link>
-                  );
-                }
+                  </div>
+                );
+              }
 
-                return <CatalogItemCard key={item.object_id} item={item} href={itemHref} />;
-              })}
-            </div>
-          </section>
+              return (
+                <div
+                  key={item.object_id}
+                  className="mb-[10px] w-[calc(50%-5px)] sm:w-[calc(33.3333%-6.66667px)] lg:w-[calc(25%-7.5px)] xl:w-[calc(20%-8px)]"
+                >
+                  <CatalogItemCard item={item} href={itemHref} />
+                </div>
+              );
+            })}
+          </div>
         ) : null}
 
-        {/* Bottom SEO Title & Description Block (Below Grid, matching hivecooking.com) */}
-        {(subtitle || description) ? (
+        {/* Bottom SEO Title & Description Block (Only on leaf product/recipe lists, not pure sub-list tile grids) */}
+        {!allSubLists && (subtitle || description) ? (
           <section className="mx-auto max-w-4xl space-y-3 pt-6 pb-4 text-[#353535]">
             {subtitle ? (
               <h2 className="text-[20px] font-semibold text-[#af3d36]">{subtitle}</h2>
@@ -639,7 +667,7 @@ export function ObjectExplorer({
         : null;
 
     return (
-      <div className="space-y-10 pt-2">
+      <div className="mx-auto max-w-container-content space-y-10 px-gutter py-section-y pt-2">
         {/* Top 2-Column Recipe Hero */}
         <section className="mx-auto grid max-w-5xl gap-8 md:grid-cols-2">
           {/* Left: Square Image + Thumbnails */}
@@ -1116,7 +1144,7 @@ export function ObjectExplorer({
     objectData.object_type === 'product' || objectData.object_type === 'book';
 
   return (
-    <div className="space-y-10 pt-2">
+    <div className="mx-auto max-w-container-content space-y-10 px-gutter py-section-y pt-2">
       {/* Top 2-Column Hero */}
       <section className="mx-auto grid max-w-5xl gap-8 md:grid-cols-2">
         {/* Left: Main Photo + Thumbnail Strip */}

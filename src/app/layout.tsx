@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 
 import { AppProviders } from '@/components/app-providers';
 import { SiteNav } from '@/components/site-nav';
@@ -19,31 +18,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="flex min-h-screen flex-col bg-bg text-fg antialiased">
+      <body className="flex min-h-screen flex-col bg-[#fafbfc] text-[rgba(0,0,0,0.65)] antialiased">
         <AppProviders>
           <SiteNav />
-          <main className="mx-auto w-full flex-1 max-w-container-content px-gutter py-section-y">
-            {children}
-          </main>
-          <footer className="mt-12 border-t border-border bg-surface py-6 text-body-sm text-fg-secondary">
-            <div className="mx-auto flex max-w-container-content flex-wrap items-center justify-between gap-4 px-gutter">
-              <p>© {new Date().getFullYear()} HiveCooking.com · Powered by Open Data Layer (ODL)</p>
-              <div className="flex flex-wrap items-center gap-4">
-                <Link href="/object/ecy-hive-cooking" className="hover:text-accent">
-                  About HiveCooking
-                </Link>
-                <Link href="/object/governance-31abe670" className="hover:text-accent">
-                  Governance
-                </Link>
-                <Link href="/explore/" className="hover:text-accent">
-                  Search &amp; Discover
-                </Link>
-                <Link href="/broadcast/" className="hover:text-accent">
-                  Keychain Tools
-                </Link>
-              </div>
-            </div>
-          </footer>
+          <main className="w-full flex-1">{children}</main>
         </AppProviders>
       </body>
     </html>
