@@ -88,6 +88,12 @@ function extractItemTags(fields: Record<string, unknown> | undefined, objectType
   return tags.slice(0, 3);
 }
 
+function normalizeStarRating(rawAvg: number): number {
+  if (rawAvg <= 0) return 0;
+  const scaled = rawAvg > 100 ? rawAvg / 2000 : rawAvg > 5 ? rawAvg / 20 : rawAvg;
+  return Math.max(0, Math.min(5, Math.round(scaled * 2) / 2));
+}
+
 function extractRatingSummary(fields: Record<string, unknown> | undefined): {
   label: string;
   stars: number;
@@ -98,10 +104,9 @@ function extractRatingSummary(fields: Record<string, unknown> | undefined): {
       averageRating?: number | null;
     };
     const rawAvg = typeof first?.averageRating === 'number' ? first.averageRating : 0;
-    const stars = rawAvg > 5 ? Math.round(rawAvg / 20) : Math.round(rawAvg);
     return {
       label: first?.dimension || 'Rating',
-      stars: Math.max(0, Math.min(5, stars)),
+      stars: normalizeStarRating(rawAvg),
     };
   }
   return { label: 'Rating', stars: 0 };
@@ -138,6 +143,9 @@ function estimateReadingTime(body: string | null | undefined): number {
   return Math.max(1, Math.round(words / 200));
 }
 
+const STAR_SVG_PATH =
+  'M908.1 353.1l-253.9-36.9L540.7 86.1c-3.1-6.3-8.2-11.4-14.5-14.5-15.8-7.8-35-1.3-42.9 14.5L369.8 316.2l-253.9 36.9c-7 1-13.4 4.3-18.3 9.3a32.05 32.05 0 0 0 .6 45.3l183.7 179.1-43.4 252.9a31.95 31.95 0 0 0 46.4 33.7L512 754l227.1 119.4c6.2 3.3 13.4 4.4 20.3 3.2 17.4-3 29.1-19.5 26.1-36.9l-43.4-252.9 183.7-179.1c5-4.9 8.3-11.3 9.3-18.3 2.7-17.5-9.5-33.7-27-36.3z';
+
 function StarRatingDisplay({
   stars,
   label,
@@ -164,30 +172,71 @@ function StarRatingDisplay({
             }
           >
             <ul className="ant-rate m-0 flex list-none p-0 leading-none">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <li
-                  key={i}
-                  className={`${
-                    isSocial ? 'mr-[3px] text-[20px]' : 'mr-[1px] text-[16px]'
-                  } flex items-center leading-none ${
-                    i < stars ? 'text-[#af3d36]' : 'text-[#e8e8e8]'
-                  }`}
-                >
-                  <i aria-label="icon: star" className="anticon anticon-star inline-flex">
-                    <svg
-                      viewBox="64 64 896 896"
-                      focusable="false"
-                      data-icon="star"
-                      width="1em"
-                      height="1em"
-                      fill="currentColor"
-                      aria-hidden="true"
-                    >
-                      <path d="M908.1 353.1l-253.9-36.9L540.7 86.1c-3.1-6.3-8.2-11.4-14.5-14.5-15.8-7.8-35-1.3-42.9 14.5L369.8 316.2l-253.9 36.9c-7 1-13.4 4.3-18.3 9.3a32.05 32.05 0 0 0 .6 45.3l183.7 179.1-43.4 252.9a31.95 31.95 0 0 0 46.4 33.7L512 754l227.1 119.4c6.2 3.3 13.4 4.4 20.3 3.2 17.4-3 29.1-19.5 26.1-36.9l-43.4-252.9 183.7-179.1c5-4.9 8.3-11.3 9.3-18.3 2.7-17.5-9.5-33.7-27-36.3z" />
-                    </svg>
-                  </i>
-                </li>
-              ))}
+              {Array.from({ length: 5 }).map((_, i) => {
+                const isFull = i + 1 <= stars;
+                const isHalf = !isFull && i < stars && i + 1 > stars;
+                return (
+                  <li
+                    key={i}
+                    className={`ant-rate-star ${
+                      isFull
+                        ? 'ant-rate-star-full text-[#7a7a7a]'
+                        : isHalf
+                          ? 'ant-rate-star-half ant-rate-star-active text-[#7a7a7a]'
+                          : 'ant-rate-star-zero text-[#e8e8e8]'
+                    } ${isSocial ? 'mr-[3px] text-[20px]' : 'mr-[1px] text-[16px]'} relative flex items-center leading-none`}
+                  >
+                    {isHalf ? (
+                      <>
+                        <div className="ant-rate-star-first absolute top-0 left-0 h-full w-1/2 overflow-hidden text-[#7a7a7a]">
+                          <i aria-label="icon: star" className="anticon anticon-star inline-flex">
+                            <svg
+                              viewBox="64 64 896 896"
+                              focusable="false"
+                              data-icon="star"
+                              width="1em"
+                              height="1em"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path d={STAR_SVG_PATH} />
+                            </svg>
+                          </i>
+                        </div>
+                        <div className="ant-rate-star-second inline-flex text-[#e8e8e8]">
+                          <i aria-label="icon: star" className="anticon anticon-star inline-flex">
+                            <svg
+                              viewBox="64 64 896 896"
+                              focusable="false"
+                              data-icon="star"
+                              width="1em"
+                              height="1em"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path d={STAR_SVG_PATH} />
+                            </svg>
+                          </i>
+                        </div>
+                      </>
+                    ) : (
+                      <i aria-label="icon: star" className="anticon anticon-star inline-flex">
+                        <svg
+                          viewBox="64 64 896 896"
+                          focusable="false"
+                          data-icon="star"
+                          width="1em"
+                          height="1em"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path d={STAR_SVG_PATH} />
+                        </svg>
+                      </i>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
           <span
@@ -208,6 +257,7 @@ function StarRatingDisplay({
 export function CatalogItemCard({
   item,
   href,
+  inCarousel = false,
 }: {
   item: {
     object_id: string;
@@ -216,6 +266,7 @@ export function CatalogItemCard({
     previewGallery?: Array<{ url: string; isAvatar?: boolean | null }> | null;
   };
   href: string;
+  inCarousel?: boolean;
 }) {
   const { username } = useWallet();
   const name = getObjectDisplayName(item);
@@ -238,7 +289,11 @@ export function CatalogItemCard({
   const buttonObj = Array.isArray(rawButton) ? rawButton[0] : rawButton;
 
   return (
-    <div className="ShopObjectCard group relative mb-[10px] flex h-full w-full flex-col items-center justify-between rounded-[4px] border border-[#e9e7e7] bg-white px-[10px] pt-[35px] pb-[10px] text-center transition-transform duration-300 md:hover:-translate-y-[5px]">
+    <div
+      className={`ShopObjectCard group relative mb-[10px] flex flex-col items-center justify-between rounded-[4px] border border-[#e9e7e7] bg-white px-[10px] pt-[35px] pb-[10px] text-center transition-transform duration-300 md:hover:-translate-y-[5px] ${
+        inCarousel ? 'mr-[10px] h-[531.6px] w-[273.2px]' : 'h-full w-full'
+      }`}
+    >
       {username ? (
         <button
           type="button"
@@ -250,7 +305,7 @@ export function CatalogItemCard({
       ) : null}
 
       <div className="flex w-full flex-col items-center">
-        <div className="ShopObjectCard__topInfoWrap">
+        <div className="ShopObjectCard__topInfoWrap flex w-full justify-center">
           <Link
             href={href}
             className="ShopObjectCard__avatarWrap flex h-[175px] w-[175px] items-start justify-center overflow-hidden md:h-[225px] md:w-[225px]"
@@ -260,7 +315,7 @@ export function CatalogItemCard({
               alt={name}
               loading="lazy"
               className={`h-full w-full ${
-                isProductOrBook ? 'object-contain p-1' : 'object-cover'
+                isProductOrBook ? 'object-contain' : 'object-cover'
               }`}
             />
           </Link>
@@ -269,25 +324,49 @@ export function CatalogItemCard({
         <Link
           href={href}
           title={name}
-          className="ShopObjectCard__name mt-[10px] line-clamp-2 px-[10px] text-center text-[16px] leading-[24px] font-medium text-black hover:text-black"
+          className={`ShopObjectCard__name mt-[10px] ${
+            inCarousel ? 'line-clamp-4' : 'line-clamp-2'
+          } px-[10px] text-center text-[16px] leading-[24px] font-medium text-black hover:text-black`}
         >
           {name}
         </Link>
 
         <StarRatingDisplay stars={stars} label={label} variant="card" />
 
-        <div className="ObjectCardView__tag-text mt-[2px] line-clamp-2 text-center text-[16px] leading-[24px] text-[rgba(0,0,0,0.65)]">
-          {price ? (
-            <>
+        {isProductOrBook ? (
+          <div className="ObjectCardView__tag-text mt-[2px] line-clamp-2 text-center text-[16px] leading-[24px]">
+            {price ? (
               <span className="ShopObjectCard__price font-semibold text-[#af3d36]">{price}</span>
-              <span className="mx-1 text-[rgba(0,0,0,0.65)]">&bull;</span>
-            </>
-          ) : null}
-          <span>{tags.join(' • ')}</span>
-        </div>
+            ) : null}
+            {tags.map((t, idx) => {
+              const formatted = t.charAt(0).toUpperCase() + t.slice(1);
+              const prefix = price || idx > 0 ? '\u00A0· ' : '';
+              return (
+                <span key={`${t}-${idx}`} className="font-medium text-[#99aab5]">
+                  {prefix}
+                  {formatted}
+                </span>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="ObjectCardView__tag-text mt-[2px] line-clamp-2 text-center text-[16px] leading-[24px] text-[rgba(0,0,0,0.65)]">
+            {price ? (
+              <>
+                <span className="ShopObjectCard__price font-semibold text-[#af3d36]">{price}</span>
+                <span className="mx-1 text-[rgba(0,0,0,0.65)]">&bull;</span>
+              </>
+            ) : null}
+            <span>{tags.join(' • ')}</span>
+          </div>
+        )}
       </div>
 
-      <div className="ShopObjectCard__affiliatLinksWrap mt-2 flex w-full justify-center">
+      <div
+        className={`ShopObjectCard__affiliatLinksWrap flex w-full justify-center ${
+          isProductOrBook ? '-mt-[10px]' : 'mt-2'
+        }`}
+      >
         {isRecipe ? (
           <div className="ShopObjectCard__affiliatLinks my-[5px] flex justify-center md:my-[15px]">
             <Link
@@ -303,25 +382,26 @@ export function CatalogItemCard({
             </Link>
           </div>
         ) : isProductOrBook ? (
-          <div className="ShopObjectCard__affiliatLinks my-[5px] flex justify-center md:my-[15px]">
+          <div className="ShopObjectCard__affiliatLinks my-[15px] flex justify-center">
             {buttonObj?.link ? (
               <a
                 href={buttonObj.link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="AffiliatLink inline-flex h-[42px] max-w-[122px] items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white px-3 text-xs font-bold text-[#111] hover:border-[#af3d36]"
+                className="AffiliatLink mb-[5px] ml-[5px] inline-flex h-[42px] w-[122px] items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white px-3 text-xs font-bold text-[#111] hover:border-[#af3d36]"
               >
                 {buttonObj.title || 'Buy Now'}
               </a>
             ) : (
               <Link
                 href={href}
-                className="AffiliatLink inline-flex h-[42px] max-w-[122px] flex-col items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white px-3 hover:border-[#af3d36]"
+                className="AffiliatLink mb-[5px] ml-[5px] inline-flex h-[42px] w-[122px] items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white hover:border-[#af3d36]"
               >
-                <span className="text-[15px] leading-none font-extrabold tracking-tight text-[#111]">
-                  amazon
-                </span>
-                <span className="mt-0.5 h-[2px] w-10 rounded-full bg-[#ff9900]" />
+                <img
+                  className="AffiliatLink__image-amazon h-[42px] w-[122px] object-contain px-[4px]"
+                  src="https://waivio.nyc3.digitaloceanspaces.com/1690901206_2075ebe5-f714-4ce4-9329-dba2cf689c6f"
+                  alt="Amazon"
+                />
               </Link>
             )}
           </div>
@@ -1274,7 +1354,7 @@ export function ObjectExplorer({
   }
 
   // ============================================================================
-  // 3. PRODUCT / BOOK / GENERAL OBJECT LAYOUT (Matches ref_product_detail.png 1:1)
+  // 3. PRODUCT / BOOK / GENERAL OBJECT LAYOUT (Matches SocialProduct on hivecooking.com 1:1)
   // ============================================================================
   const price =
     typeof objectData.fields?.price === 'string'
@@ -1303,11 +1383,27 @@ export function ObjectExplorer({
     objectData.fields?.merchant ??
     objectData.fields?.manufacturer ??
     objectData.fields?.publisher) as
-    | { object_id?: string; fields?: Record<string, unknown> }
+    | { object_id?: string; name?: string; fields?: Record<string, unknown> }
+    | string
     | undefined;
-  const brandName = brandEntry?.object_id
-    ? getObjectDisplayName({ object_id: brandEntry.object_id, fields: brandEntry.fields })
-    : null;
+  const isProductOrBook =
+    objectData.object_type === 'product' || objectData.object_type === 'book';
+  const brandName =
+    typeof brandEntry === 'string'
+      ? brandEntry
+      : brandEntry?.object_id
+        ? getObjectDisplayName({ object_id: brandEntry.object_id, fields: brandEntry.fields })
+        : typeof brandEntry?.name === 'string'
+          ? brandEntry.name
+          : objectData.object_type === 'product'
+            ? (displayName.split(/\s+/)[0] ?? null)
+            : null;
+  const brandHref =
+    typeof brandEntry === 'object' && brandEntry?.object_id
+      ? `/object/${encodeURIComponent(brandEntry.object_id)}`
+      : brandName
+        ? `/discover-objects/${encodeURIComponent(objectData.object_type)}?search=${encodeURIComponent(brandName)}`
+        : null;
 
   const ratingsList: Array<{ dimension: string; stars: number }> = Array.isArray(
     objectData.fields?.aggregateRating,
@@ -1316,12 +1412,37 @@ export function ObjectExplorer({
         if (r && typeof r === 'object') {
           const rec = r as { dimension?: string; averageRating?: number | null };
           const avg = typeof rec.averageRating === 'number' ? rec.averageRating : 0;
-          const stars = avg > 5 ? Math.round(avg / 2000) : Math.round(avg);
-          return [{ dimension: rec.dimension || 'Rating', stars: Math.max(0, Math.min(5, stars)) }];
+          return [{ dimension: rec.dimension || 'Rating', stars: normalizeStarRating(avg) }];
         }
         return [];
       })
     : [{ dimension: 'Rating', stars: 0 }];
+
+  const optionItems: Array<{ category: string; value: string; image?: string }> = Array.isArray(
+    objectData.fields?.option,
+  )
+    ? (objectData.fields.option as unknown[]).flatMap((item) => {
+        if (item && typeof item === 'object' && 'category' in item && 'value' in item) {
+          const r = item as Record<string, unknown>;
+          return [
+            {
+              category: String(r.category),
+              value: String(r.value),
+              image: typeof r.image === 'string' ? r.image : undefined,
+            },
+          ];
+        }
+        return [];
+      })
+    : [];
+  const groupedOptions = new Map<string, Array<{ value: string; image?: string }>>();
+  for (const opt of optionItems) {
+    const list = groupedOptions.get(opt.category) ?? [];
+    if (!list.some((x) => x.value === opt.value)) {
+      list.push({ value: opt.value, image: opt.image });
+    }
+    groupedOptions.set(opt.category, list);
+  }
 
   const featureList: Array<{ key: string; value: string }> = Array.isArray(
     objectData.fields?.featureList,
@@ -1354,9 +1475,12 @@ export function ObjectExplorer({
     groupedTags.set(tci.category, list);
   }
 
-  const departments = Array.isArray(objectData.fields?.departments)
-    ? (objectData.fields.departments as unknown[]).map((x) => String(x))
-    : [];
+  const rawDepartments = objectData.fields?.departments ?? objectData.fields?.category;
+  const departments = Array.isArray(rawDepartments)
+    ? (rawDepartments as unknown[]).map((x) => String(x))
+    : typeof rawDepartments === 'string'
+      ? [rawDepartments]
+      : [];
   const weightText =
     objectData.fields?.weight && typeof objectData.fields.weight === 'object'
       ? `${(objectData.fields.weight as { value?: unknown }).value ?? ''} ${(objectData.fields.weight as { unit?: unknown }).unit ?? ''}`.trim()
@@ -1381,119 +1505,197 @@ export function ObjectExplorer({
   const pageContent =
     typeof objectData.fields?.pageContent === 'string' ? objectData.fields.pageContent : null;
 
-  const isProductOrBook =
-    objectData.object_type === 'product' || objectData.object_type === 'book';
+  const distinctSimilarObjects = similarObjects.filter(
+    (sim) => !relatedObjects.some((rel) => rel.object_id === sim.object_id),
+  );
 
   return (
-    <div className="mx-auto max-w-container-content space-y-10 px-gutter py-section-y pt-2">
-      {/* Top 2-Column Hero */}
-      <section className="mx-auto grid max-w-5xl gap-8 md:grid-cols-2">
-        {/* Left: Main Photo + Thumbnail Strip */}
-        <div className="flex flex-col items-center">
-          <div className="aspect-square w-full max-w-[430px] overflow-hidden rounded-[2px] bg-white">
-            <img
-              src={activeHeroImage}
-              alt={displayName}
-              className={`h-full w-full ${isProductOrBook ? 'object-contain p-2' : 'object-cover'}`}
-            />
-          </div>
-          {galleryUrls.length > 1 ? (
-            <div className="mt-3 flex flex-wrap justify-center gap-2">
-              {galleryUrls.slice(0, 8).map((url) => (
-                <button
-                  key={url}
-                  type="button"
-                  onClick={() => setSelectedGalleryUrl(url)}
-                  className={`h-12 w-12 overflow-hidden rounded-[2px] border-2 bg-white ${
-                    activeHeroImage === url ? 'border-[#353535]' : 'border-[#e9e7e7] opacity-80'
-                  }`}
-                >
-                  <img src={url} alt="" className="h-full w-full object-cover" />
-                </button>
-              ))}
+    <div className="SocialProduct flex flex-col p-0 md:px-[20px] md:pt-[10px] md:pb-[4px]">
+      {/* Top 2-Column Product Hero (.SocialProduct__column-wrapper) */}
+      <div className="SocialProduct__column SocialProduct__column-wrapper flex flex-col px-[16px] md:grid md:grid-cols-2 md:px-[20px]">
+        {/* Left Column (.SocialProduct__row): max-w 600px, p 16px, right-aligned 500x500 slider */}
+        <div className="SocialProduct__row min-h-fit p-0 md:max-w-[600px] md:p-[16px]">
+          <div className="SocialProduct__carouselWrapper mb-[20px] flex justify-end">
+            <div className="PicturesSlider w-full md:w-[500px]">
+              <div>
+                <img
+                  src={activeHeroImage}
+                  alt={` ${displayName}. `}
+                  className="PicturesSlider__previewImage mx-auto block h-auto max-h-[500px] min-h-[300px] w-full cursor-pointer object-contain md:h-[500px] md:w-[500px] md:object-cover"
+                />
+              </div>
+              <br />
+              {galleryUrls.length > 0 ? (
+                <div className="ant-carousel mx-auto w-[345px] md:w-[457px]">
+                  <div className="slick-track flex justify-center">
+                    {galleryUrls.map((url, idx) => (
+                      <button
+                        key={url}
+                        type="button"
+                        onClick={() => setSelectedGalleryUrl(url)}
+                        className="inline-block border-0 bg-transparent p-0 outline-none"
+                      >
+                        <img
+                          src={
+                            url.startsWith('https://m.media-amazon.com/')
+                              ? `https://images.hive.blog/0x0/${url}`
+                              : url
+                          }
+                          alt={`${idx} ${displayName}`}
+                          className={`PicturesSlider__thumbnail mr-[8px] h-[50px] w-[50px] cursor-pointer rounded-[4px] object-contain ${
+                            activeHeroImage === url
+                              ? 'PicturesSlider__thumbnail--active border border-[#af3d36]'
+                              : 'border border-[#bcbcbc]'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          </div>
+          <div className="SocialProduct__reward-wrap hidden h-0 w-[500px] md:ml-auto md:block">
+            <div className="ProductRewardCard h-0 w-[500px]" />
+          </div>
         </div>
 
-        {/* Right: Title, Brand, Follow/Edit, Ratings, Price, Buy Button */}
-        <div className="space-y-3 text-[#353535]">
-          <div>
-            <h1 className="text-[22px] font-bold leading-snug text-[#353535]">{displayName}</h1>
-            {brandEntry?.object_id && brandName ? (
-              <Link
-                href={`/object/${encodeURIComponent(brandEntry.object_id)}`}
-                className="mt-0.5 inline-block text-xs font-medium text-[#af3d36] hover:underline"
-              >
-                {brandName}
-              </Link>
-            ) : subtitle ? (
-              <p className="mt-0.5 text-xs text-[#99aab5]">{subtitle}</p>
-            ) : null}
-          </div>
+        {/* Right Column (.SocialProduct__right-row): max-w 600px, p 16px 16px 16px 10px */}
+        <div className="SocialProduct__row SocialProduct__right-row min-h-fit p-0 md:max-w-[600px] md:py-[16px] md:pr-[16px] md:pl-[10px]">
+          <h1 className="SocialProduct__bookWobjName m-0 text-[26px] leading-[39px] font-semibold break-words text-black">
+            <span>{displayName}</span>
+          </h1>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void handleFollowObject()}
-              className="rounded-[4px] bg-[#af3d36] px-4 py-1 text-xs font-semibold text-white hover:opacity-90"
-            >
-              Follow
-            </button>
-            <button
-              type="button"
-              className="rounded-[4px] border border-[#d9d9d9] bg-white px-3.5 py-1 text-xs text-[#353535] hover:border-[#af3d36]"
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              aria-label="Favorite"
-              className="ml-1 text-lg text-[#af3d36] hover:scale-110"
-            >
-              ♥
-            </button>
-          </div>
-
-          {actionStatus ? (
-            <p className="text-xs font-medium text-[#af3d36]">{actionStatus}</p>
+          {brandName && brandHref ? (
+            <div className="SocialProduct__paddingBottom pb-[20px]">
+              <div className="h-[24px] leading-[24px]">
+                <Link
+                  href={brandHref}
+                  className="text-[16px] leading-[24px] font-normal text-[#af3d36] hover:underline"
+                >
+                  {brandName}
+                </Link>
+              </div>
+            </div>
+          ) : subtitle ? (
+            <div className="SocialProduct__paddingBottom pb-[20px]">
+              <div className="h-[24px] leading-[24px] text-[16px] text-[#99aab5]">{subtitle}</div>
+            </div>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-4">
+          {username ? (
+            <div className="SocialProduct__socialActions mb-[20px] flex items-center gap-2 md:mb-[15px]">
+              <button
+                type="button"
+                onClick={() => void handleFollowObject()}
+                className="rounded-[4px] bg-[#af3d36] px-4 py-1 text-xs font-semibold text-white hover:opacity-90"
+              >
+                Follow
+              </button>
+              <button
+                type="button"
+                className="rounded-[4px] border border-[#d9d9d9] bg-white px-3.5 py-1 text-xs text-[#353535] hover:border-[#af3d36]"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                aria-label="Favorite"
+                className="ml-1 text-lg text-[#99aab5] hover:text-[#af3d36]"
+              >
+                ♥
+              </button>
+            </div>
+          ) : null}
+
+          {actionStatus ? (
+            <p className="mb-2 text-xs font-medium text-[#af3d36]">{actionStatus}</p>
+          ) : null}
+
+          <div className="SocialProduct__ratings mb-[15px] flex flex-wrap">
             {ratingsList.map((r, i) => (
-              <StarRatingDisplay key={`${r.dimension}-${i}`} stars={r.stars} label={r.dimension} />
+              <div key={`${r.dimension}-${i}`} className="SocialProduct__ratings-item mr-[30px]">
+                <StarRatingDisplay stars={r.stars} label={r.dimension} variant="social" />
+              </div>
             ))}
           </div>
 
-          {(price || compareAtPrice) ? (
-            <div className="flex items-baseline gap-2.5 pt-1">
-              {price ? (
-                <span className="text-[20px] font-bold text-[#af3d36]">{price}</span>
-              ) : null}
-              {compareAtPrice ? (
-                <span className="text-sm text-[#99aab5] line-through">{compareAtPrice}</span>
-              ) : null}
+          <div className="flex flex-row">
+            {price ? (
+              <div className="SocialProduct__price mb-[20px] text-[26px] leading-[39px] font-semibold text-[#af3d36]">
+                {price}
+              </div>
+            ) : (
+              <div className="SocialProduct__price mb-[20px] h-0 w-0" />
+            )}
+            {compareAtPrice ? (
+              <div className="ml-2.5 self-center text-[16px] text-[#99aab5] line-through">
+                {compareAtPrice}
+              </div>
+            ) : null}
+          </div>
+
+          {groupedOptions.size > 0 ? (
+            <div className="SocialProduct__paddingBottom pb-[20px]">
+              <div className="Options flex flex-col">
+                {Array.from(groupedOptions.entries()).map(([category, opts]) => (
+                  <div key={category}>
+                    <div className="Options__option-socialCategory pb-[5px] text-[16px] leading-[16px] font-semibold text-black">
+                      <span>{category}</span>:{' '}
+                      <span className="Options__hovered-option font-normal text-[rgba(0,0,0,0.65)]" />
+                    </div>
+                    <div className="Options__item-Making-container flex flex-row flex-wrap items-center">
+                      {opts.map((opt, idx) => (
+                        <span key={`${opt.value}-${idx}`} className="mr-[6px]">
+                          <span
+                            className={`Options__my-option-button mb-[4px] inline-block h-[25px] cursor-pointer rounded-[4px] border px-[8px] text-center text-[16px] leading-[24px] font-normal text-[rgba(0,0,0,0.65)] ${
+                              idx === 0
+                                ? 'Options__my-option-button--selected border-[#af3d36]'
+                                : 'border-[#e9e7e7]'
+                            }`}
+                          >
+                            {opt.value}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
 
           {(buttonObj?.link || websiteObj?.link || isProductOrBook) ? (
-            <div className="pt-2">
-              <p className="text-[11px] font-medium text-[#99aab5] uppercase">BUY IT ON:</p>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <div className="SocialProduct__paddingBottom pb-[20px]">
+              <div className="SocialProduct__subtitle h-[24px] text-[16px] leading-[24px] font-normal text-[#99aab5] uppercase">
+                Buy it on:
+              </div>
+              <div className="SocialProduct__affiliateContainer flex flex-wrap items-center">
                 {buttonObj?.link ? (
-                  <a
-                    href={buttonObj.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white px-5 py-2 text-sm font-bold text-[#111] shadow-2xs hover:border-[#af3d36]"
-                  >
-                    {buttonObj.title || 'Buy Now'}
-                  </a>
+                  <div className="w-[180px]">
+                    <a
+                      href={buttonObj.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="AffiliatLink mr-[5px] mb-[5px] inline-flex h-[61.6px] w-[175px] items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white px-4 text-sm font-bold text-[#111] hover:border-[#af3d36]"
+                    >
+                      {buttonObj.title || 'Buy Now'}
+                    </a>
+                  </div>
                 ) : isProductOrBook ? (
-                  <div className="inline-flex flex-col items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white px-5 py-1.5 shadow-2xs">
-                    <span className="text-[18px] font-extrabold tracking-tight leading-none text-[#111]">
-                      amazon
-                    </span>
-                    <span className="mt-0.5 h-[2px] w-12 rounded-full bg-[#ff9900]" />
+                  <div className="w-[180px]">
+                    <a
+                      href={`https://www.amazon.com/s?k=${encodeURIComponent(displayName)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="AffiliatLink mr-[5px] mb-[5px] flex h-[61.6px] w-[175px] items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white hover:border-[#af3d36]"
+                    >
+                      <img
+                        className="AffiliatLink__image-amazon box-content h-[60px] w-[175px] object-contain px-[4px]"
+                        src="https://waivio.nyc3.digitaloceanspaces.com/1690901206_2075ebe5-f714-4ce4-9329-dba2cf689c6f"
+                        alt="Amazon"
+                      />
+                    </a>
                   </div>
                 ) : null}
                 {websiteObj?.link && websiteObj.link !== buttonObj?.link ? (
@@ -1501,208 +1703,285 @@ export function ObjectExplorer({
                     href={websiteObj.link}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white px-4 py-2 text-xs font-semibold text-[#353535] hover:border-[#af3d36]"
+                    className="mr-[5px] mb-[5px] inline-flex h-[61.6px] items-center justify-center rounded-[4px] border border-[#e9e7e7] bg-white px-4 text-xs font-semibold text-[#353535] hover:border-[#af3d36]"
                   >
                     {websiteObj.title || 'Website'} ↗
                   </a>
                 ) : null}
               </div>
-              <p className="mt-1 text-[11px] text-[#99aab5]">Earns commissions on purchases</p>
+              <div className="mb-[15px] h-[24px] text-[16px] leading-[24px] font-normal text-[#a4adb8]">
+                Earns commissions on purchases
+              </div>
             </div>
           ) : null}
         </div>
-      </section>
+      </div>
 
-      {/* ABOUT Section (Alternating 2-Column Text & Gallery Photos matching hivecooking.com) */}
-      {descParagraphs.length > 0 ? (
-        <section className="space-y-6">
-          <h2 className="text-xs font-bold tracking-wider text-[#353535] uppercase">ABOUT</h2>
-          <div className="mx-auto max-w-5xl space-y-8">
-            {descParagraphs.map((para, idx) => {
-              const pairImg = galleryUrls[idx + 1];
-              if (!pairImg) {
-                return (
-                  <p key={idx} className="text-sm leading-relaxed text-[#595959]">
-                    {para}
-                  </p>
-                );
-              }
-              const imgOnRight = idx % 2 === 0;
-              return (
-                <div
-                  key={idx}
-                  className="grid items-center gap-8 md:grid-cols-2"
-                >
-                  {imgOnRight ? (
-                    <>
-                      <p className="text-sm leading-relaxed text-[#595959]">{para}</p>
+      {/* Lower Full-Width Column (.SocialProduct__column) */}
+      <div className="SocialProduct__column px-[16px] md:px-[20px]">
+        {/* ABOUT Section (Alternating 2-Column Text & 500px Gallery Photos matching hivecooking.com) */}
+        {descParagraphs.length > 0 ? (
+          <div className="SocialProduct__aboutItem mb-[30px] pt-[20px]">
+            <div className="SocialProduct__heading pb-[8px] text-[18px] leading-[27px] font-semibold text-black uppercase">
+              About
+            </div>
+            <div className="SocialProduct__description pt-[20px] pl-[20px]">
+              <div className="SocialProductDescription flex flex-col">
+                {descParagraphs.map((para, idx) => {
+                  const pairImg = galleryUrls[idx + 1];
+                  if (!pairImg) {
+                    return (
+                      <div
+                        key={idx}
+                        className="SocialProductDescription__paragraph-container mb-[20px] flex w-full"
+                      >
+                        <p className="SocialProductDescription__paragraph m-0 w-full p-[20px] text-left text-[18px] leading-[27px] font-normal text-[rgba(0,0,0,0.65)]">
+                          {para}
+                        </p>
+                      </div>
+                    );
+                  }
+                  const isReversed = idx % 2 === 1;
+                  return (
+                    <div
+                      key={idx}
+                      className={`SocialProductDescription__paragraph-container mb-[20px] flex w-full flex-col justify-around last:mb-0 md:flex-row ${
+                        isReversed ? 'md:flex-row-reverse' : ''
+                      }`}
+                    >
+                      <p className="SocialProductDescription__paragraph m-0 w-full p-[20px] text-left text-[18px] leading-[27px] font-normal text-[rgba(0,0,0,0.65)] md:w-1/2">
+                        {para}
+                      </p>
                       <div className="flex justify-center">
                         <img
                           src={pairImg}
                           alt=""
                           loading="lazy"
-                          className="max-h-80 rounded-[2px] object-contain"
+                          className="SocialProductDescription__image mx-[20px] mt-[20px] mb-0 h-[500px] max-w-[95%] border border-[#e9e7e7] object-contain"
                         />
                       </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex justify-center">
-                        <img
-                          src={pairImg}
-                          alt=""
-                          loading="lazy"
-                          className="max-h-80 rounded-[2px] object-contain"
-                        />
-                      </div>
-                      <p className="text-sm leading-relaxed text-[#595959]">{para}</p>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
-
-      {/* HTML / Page Content (for Services `html` & Links `page` objects) */}
-      {htmlContent ? (
-        <section className="rounded-[4px] border border-[#e9e7e7] bg-white p-6">
-          <div
-            className="prose max-w-none text-body text-[#353535]"
-            dangerouslySetInnerHTML={{ __html: htmlContent }}
-          />
-        </section>
-      ) : null}
-
-      {pageContent ? (
-        <section className="rounded-[4px] border border-[#e9e7e7] bg-white p-6">
-          <PostBodyRenderer body={pageContent} />
-        </section>
-      ) : null}
-
-      {/* PRODUCT DETAILS Section */}
-      {isProductOrBook ? (
-        <section className="space-y-2 text-xs">
-          <h2 className="text-xs font-bold tracking-wider text-[#353535] uppercase">
-            PRODUCT DETAILS
-          </h2>
-          <div className="space-y-1.5 pl-4">
-            {weightText ? (
-              <p>
-                <strong className="text-[#353535]">Weight: </strong>
-                <span className="text-[#99aab5]">{weightText}</span>
-              </p>
-            ) : null}
-            {dimensionsText ? (
-              <p>
-                <strong className="text-[#353535]">Dimensions: </strong>
-                <span className="text-[#99aab5]">{dimensionsText}</span>
-              </p>
-            ) : null}
-            {departments.length > 0 ? (
-              <p>
-                <strong className="text-[#353535]">Departments: </strong>
-                <span className="text-[#99aab5]">{departments.join(', ')}</span>
-              </p>
-            ) : null}
-            <p>
-              <strong className="text-[#353535]">Product IDs: </strong>
-              <button
-                type="button"
-                onClick={() => setShowProductIds((v) => !v)}
-                className="text-[#af3d36] hover:underline"
-              >
-                {showProductIds ? '(hide)' : '(show)'}
-              </button>
-              {showProductIds ? (
-                <span className="ml-2 font-mono text-[#99aab5]">{objectData.object_id}</span>
-              ) : null}
-            </p>
-          </div>
-        </section>
-      ) : null}
-
-      {/* FEATURES Section */}
-      {featureList.length > 0 ? (
-        <section className="space-y-2 text-xs">
-          <h2 className="text-xs font-bold tracking-wider text-[#353535] uppercase">FEATURES</h2>
-          <div className="space-y-1.5 pl-4">
-            {featureList.map((feat, idx) => (
-              <p key={`${feat.key}-${idx}`}>
-                <strong className="text-[#353535]">{feat.key}: </strong>
-                <span className="text-[#99aab5]">{feat.value}</span>
-              </p>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {/* SIMILAR Section */}
-      {similarObjects.length > 0 ? (
-        <section className="space-y-3">
-          <h2 className="text-xs font-bold tracking-wider text-[#353535] uppercase">SIMILAR</h2>
-          <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {similarObjects.map((sim) => (
-              <CatalogItemCard
-                key={sim.object_id}
-                item={sim}
-                href={`/object/${encodeURIComponent(sim.object_id)}`}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {/* RELATED ITEMS Section */}
-      {relatedObjects.length > 0 ? (
-        <section className="space-y-3">
-          <h2 className="text-xs font-bold tracking-wider text-[#353535] uppercase">
-            RELATED ITEMS
-          </h2>
-          <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {relatedObjects.map((rel) => (
-              <CatalogItemCard
-                key={rel.object_id}
-                item={rel}
-                href={`/object/${encodeURIComponent(rel.object_id)}`}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {/* TAGS Section */}
-      {groupedTags.size > 0 ? (
-        <section className="space-y-2 text-xs">
-          <h2 className="text-xs font-bold tracking-wider text-[#353535] uppercase">TAGS</h2>
-          <div className="space-y-2 pl-4">
-            {Array.from(groupedTags.entries()).map(([category, values]) => (
-              <div key={category} className="flex flex-wrap items-center gap-1.5">
-                <span className="mr-1 text-[#99aab5]">{category}:</span>
-                {values.map((val) => (
-                  <span
-                    key={val}
-                    className="rounded-[4px] border border-[#af3d36]/40 bg-[#af3d36]/5 px-2.5 py-0.5 text-xs text-[#af3d36]"
-                  >
-                    {val}
-                  </span>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            </div>
           </div>
-        </section>
-      ) : null}
+        ) : null}
 
-      {/* USER REVIEWS / Posts Feed */}
-      {(isProductOrBook || posts.length > 0 || !postsLoading) ? (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold tracking-wider text-[#353535] uppercase">
-              USER REVIEWS
-            </h2>
-            <span className="text-xs font-bold text-[#af3d36] uppercase">WRITE REVIEW</span>
+        {/* HTML / Page Content (for Services `html` & Links `page` objects) */}
+        {htmlContent ? (
+          <div className="mb-[30px] rounded-[4px] border border-[#e9e7e7] bg-white p-6">
+            <div
+              className="prose max-w-none text-body text-[#353535]"
+              dangerouslySetInnerHTML={{ __html: htmlContent }}
+            />
           </div>
+        ) : null}
+
+        {pageContent ? (
+          <div className="mb-[30px] rounded-[4px] border border-[#e9e7e7] bg-white p-6">
+            <PostBodyRenderer body={pageContent} />
+          </div>
+        ) : null}
+
+        {/* PRODUCT DETAILS Section */}
+        {isProductOrBook ? (
+          <div className="SocialProduct__productDetails mb-[30px]">
+            <div className="SocialProduct__heading pb-[8px] text-[18px] leading-[27px] font-semibold text-black uppercase">
+              Product details
+            </div>
+            <div className="SocialProduct__productDetails-content pl-[20px] text-[16px] leading-[24px] text-[rgba(0,0,0,0.65)]">
+              <div className="flex flex-col">
+                {weightText ? (
+                  <div className="pb-[12px]">
+                    <span className="CompanyId__title mr-[4px] font-[550]">Weight:</span>
+                    <span>{weightText}</span>
+                  </div>
+                ) : null}
+                {dimensionsText ? (
+                  <div className="pb-[12px]">
+                    <span className="CompanyId__title mr-[4px] font-[550]">Dimensions:</span>
+                    <span>{dimensionsText}</span>
+                  </div>
+                ) : null}
+                {departments.length > 0 ? (
+                  <div className="flex flex-wrap pb-[12px]">
+                    <span className="CompanyId__title mr-[4px] font-[550]">Departments:</span>
+                    {departments.map((dept, idx) => (
+                      <span key={`${dept}-${idx}`}>
+                        {idx > 0 ? ', ' : ''}
+                        <Link
+                          href={`/discover-objects/${encodeURIComponent(objectData.object_type)}?category=${encodeURIComponent(dept)}`}
+                          className="text-[rgba(0,0,0,0.65)] hover:text-[#af3d36]"
+                        >
+                          {dept}
+                        </Link>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="mb-[8px]">
+                  <div className="CompanyId__container">
+                    <button
+                      type="button"
+                      onClick={() => setShowProductIds((v) => !v)}
+                      className="CompanyId__button CompanyId__title cursor-pointer border-0 bg-transparent p-0 font-[550] text-[rgba(0,0,0,0.65)]"
+                    >
+                      Product IDs:{' '}
+                      <span className="CompanyId__websiteColor font-normal text-[#af3d36]">
+                        {showProductIds ? '(hide)' : '(show)'}
+                      </span>
+                    </button>
+                    {showProductIds ? (
+                      <div className="CompanyId__block mt-[4px] font-mono text-[14px] text-[rgba(0,0,0,0.65)]">
+                        {objectData.object_id}
+                      </div>
+                    ) : (
+                      <div className="CompanyId__block mt-[4px] h-0" />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* FEATURES Section */}
+        {featureList.length > 0 ? (
+          <div className="SocialProduct__featuresContainer mb-[30px]">
+            <div className="SocialProduct__heading pb-[8px] text-[18px] leading-[27px] font-semibold text-black uppercase">
+              Features
+            </div>
+            <div className="pl-[20px] text-[16px] leading-[24px] text-[rgba(0,0,0,0.65)]">
+              {featureList.map((feat, idx) => (
+                <div key={`${feat.key}-${idx}`} className="mb-[8px]">
+                  <span className="CompanyId__title mr-[4px] font-[550]">{feat.key}:</span>
+                  <span>{feat.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* SIMILAR Section (Only if distinct from Related items) */}
+        {distinctSimilarObjects.length > 0 ? (
+          <div className="SocialProduct__addOn-section mb-[30px]">
+            <div className="SocialProduct__heading pb-[8px] text-[18px] leading-[27px] font-semibold text-black uppercase">
+              Similar
+            </div>
+            <div className="Slider__wrapper-similar relative mb-[20px]">
+              <div className="ant-carousel">
+                <div className="slick-slider slick-initialized relative">
+                  <div className="slick-list overflow-hidden">
+                    <div className="slick-track flex flex-row">
+                      {distinctSimilarObjects.slice(0, 5).map((sim) => (
+                        <div key={sim.object_id} className="w-[289px] shrink-0 pt-[5px]">
+                          <CatalogItemCard
+                            item={sim}
+                            href={`/object/${encodeURIComponent(sim.object_id)}`}
+                            inCarousel
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* RELATED ITEMS Section */}
+        {relatedObjects.length > 0 ? (
+          <div className="SocialProduct__addOn-section mb-[30px]">
+            <div className="SocialProduct__heading pb-[8px] text-[18px] leading-[27px] font-semibold text-black uppercase">
+              Related items
+            </div>
+            <div className="Slider__wrapper-related relative mb-[20px] h-[541.6px]">
+              <div className="ant-carousel h-[541.6px]">
+                <div className="slick-slider slick-initialized relative h-[541.6px]">
+                  <div className="slick-list flex h-[541.6px] overflow-hidden">
+                    <div className="slick-track flex h-[541.6px] flex-row">
+                      {relatedObjects.slice(0, 5).map((rel) => (
+                        <div key={rel.object_id} className="w-[289px] shrink-0 pt-[5px]">
+                          <CatalogItemCard
+                            item={rel}
+                            href={`/object/${encodeURIComponent(rel.object_id)}`}
+                            inCarousel
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <span className="PicturesSlider__arrow PicturesSlider__arrow--next absolute top-[258.8px] -right-[20px] flex h-[24px] w-[16px] items-center justify-center text-[16px] text-[rgba(0,0,0,0.65)]">
+                    <i className="anticon anticon-caret-right inline-block h-[16px] w-[16px] leading-none">
+                      <svg
+                        viewBox="0 0 1024 1024"
+                        width="1em"
+                        height="1em"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path d="M715.8 493.5L335 165.1c-14.2-12.2-35-1.2-35 18.5v656.8c0 19.7 20.8 30.7 35 18.5l380.8-328.4c10.9-9.4 10.9-27.6 0-37z" />
+                      </svg>
+                    </i>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* TAGS Section */}
+        {groupedTags.size > 0 ? (
+          <div className="SocialProduct__featuresContainer mb-[30px]">
+            <div className="SocialProduct__heading pb-[8px] text-[18px] leading-[27px] font-semibold text-black uppercase">
+              Tags
+            </div>
+            <div className="SocialProduct__centralContent mx-[9%]">
+              {Array.from(groupedTags.entries()).map(([category, values]) => (
+                <div
+                  key={category}
+                  className="SocialProduct__tag-wrapper mb-[20px] flex flex-row text-[16px] leading-[24px] text-[rgba(0,0,0,0.65)]"
+                >
+                  <span>{category}:</span>
+                  <div className="SocialProduct__tags pl-[5px]">
+                    {values.map((val) => (
+                      <div
+                        key={val}
+                        className="ant-tag SocialProduct__tag-item mb-[10px] ml-[10px] inline-block h-[21.6px] cursor-pointer rounded-[4px] border border-[#af3d36] bg-[rgba(175,61,54,0.1)] px-[7px] text-[12px] leading-[20px] font-normal text-[rgba(0,0,0,0.65)]"
+                      >
+                        <span>
+                          <Link
+                            href={`/discover-objects/${encodeURIComponent(objectData.object_type)}?${encodeURIComponent(category)}=${encodeURIComponent(val)}`}
+                            className="text-[rgba(0,0,0,0.65)] hover:text-[#af3d36]"
+                          >
+                            {val}
+                          </Link>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* USER REVIEWS Section */}
+        <div className="SocialProductReviews">
+          <div className="SocialProductReviews__container mt-[40px] mb-[10px] flex h-[35px] items-start justify-between">
+            <div className="SocialProduct__heading pb-[8px] text-[18px] leading-[27px] font-semibold text-black uppercase">
+              User reviews
+            </div>
+            <button
+              type="button"
+              className="SocialProduct__heading SocialProductReviews__write cursor-pointer border-0 bg-transparent mr-[20px] p-0 pb-[8px] text-[18px] leading-[27px] font-semibold text-[#af3d36] uppercase"
+            >
+              Write review
+            </button>
+          </div>
+
           {posts.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
               {posts.map((post) => {
@@ -1742,9 +2021,13 @@ export function ObjectExplorer({
                 );
               })}
             </div>
-          ) : null}
-        </section>
-      ) : null}
+          ) : (
+            <div className="FeedMasonry__emptyFeed m-[20px] rounded-[4px] border border-[#af3d36] py-[20px] text-center text-[18px] leading-[27px] font-medium text-[#af3d36]">
+              Be the first to write a review
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
