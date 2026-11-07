@@ -1,4 +1,6 @@
 import type {
+  AccountUpdate2Op,
+  ClaimRewardBalanceOp,
   CommentOp,
   CommentOptionsOp,
   CustomJsonOp,
@@ -144,4 +146,34 @@ export function buildHiveUnfollowOp(
     id: HIVE_FOLLOW_CUSTOM_JSON_ID,
     json,
   });
+}
+
+export function buildAccountUpdate2Op(input: {
+  account: string;
+  json_metadata?: string;
+  posting_json_metadata: string;
+  extensions?: readonly unknown[];
+}): AccountUpdate2Op {
+  return {
+    type: 'account_update2',
+    account: input.account,
+    json_metadata: input.json_metadata ?? '',
+    posting_json_metadata: input.posting_json_metadata,
+    extensions: input.extensions ?? [],
+  };
+}
+
+export function buildClaimRewardBalanceOp(input: {
+  account: string;
+  reward_hive: string;
+  reward_hbd: string;
+  reward_vests: string;
+}): ClaimRewardBalanceOp {
+  return {
+    type: 'claim_reward_balance',
+    account: input.account,
+    reward_hive: input.reward_hive,
+    reward_hbd: input.reward_hbd,
+    reward_vests: input.reward_vests,
+  };
 }

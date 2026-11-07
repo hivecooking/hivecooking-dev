@@ -139,6 +139,19 @@ export function SiteNav() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
 
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Listen for global hivecooking:open-login events from anywhere on the site
+  useEffect(() => {
+    function handleOpenLogin() {
+      setLoginError(null);
+      setLoginModalOpen(true);
+    }
+    window.addEventListener('hivecooking:open-login', handleOpenLogin);
+    return () => window.removeEventListener('hivecooking:open-login', handleOpenLogin);
+  }, []);
+
   useEffect(() => {
     const q = searchQuery.trim();
     if (q.length < 2) {
@@ -164,6 +177,9 @@ export function SiteNav() {
     function handleClickOutside(e: MouseEvent) {
       if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
         setSearchOpen(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -311,20 +327,99 @@ export function SiteNav() {
         {/* Right Header Controls (.Header__rightWrap): Sign In + Language Icon */}
         <div className="Header__rightWrap flex h-[55px] items-center">
           {username ? (
-            <div className="flex items-center gap-2">
+            <div ref={userMenuRef} className="relative flex items-center gap-2.5">
               <Link
-                href={`/@${encodeURIComponent(username)}`}
-                className="rounded-[4px] border border-[#e9e7e7] bg-white px-3 py-1 text-[15px] font-medium text-[#353535] hover:text-[#af3d36]"
+                href="/editor"
+                className="inline-flex h-[32px] items-center gap-1.5 rounded-[4px] bg-[#af3d36] px-3 text-[13px] font-semibold text-white shadow-xs transition-colors hover:bg-[#93312b]"
               >
-                @{username}
+                <span>✎</span>
+                <span>Write post</span>
               </Link>
+
               <button
                 type="button"
-                onClick={() => disconnect()}
-                className="rounded-[4px] border border-[#e9e7e7] px-2.5 py-1 text-xs text-[#99aab5] hover:border-[#af3d36] hover:text-[#af3d36]"
+                onClick={() => setUserMenuOpen((prev) => !prev)}
+                className="inline-flex h-[34px] cursor-pointer items-center gap-2 rounded-[4px] border border-[#e0e0e0] bg-white px-2.5 py-1 text-[14px] font-medium text-[#303540] hover:border-[#af3d36]"
               >
-                {t('wallet.disconnect')}
+                <img
+                  src={`https://images.hive.blog/u/${encodeURIComponent(username)}/avatar`}
+                  alt={username}
+                  className="h-6 w-6 rounded-full border border-[#e0e0e0] object-cover"
+                />
+                <span>@{username}</span>
+                <span className="text-[10px] text-[#8c8c8c]">▾</span>
               </button>
+
+              <button
+                type="button"
+                onClick={handleToggleLocale}
+                title={locale === 'en-US' ? 'Switch to Arabic' : 'Switch to English'}
+                className="Topnav__link flex h-[34px] w-[28px] cursor-pointer items-center justify-center text-[#af3d36]"
+              >
+                <i className="iconfont icon-language !text-[22px] leading-none font-thin text-[#af3d36]" />
+              </button>
+
+              {userMenuOpen ? (
+                <div className="absolute top-full right-0 z-50 mt-1.5 w-[210px] rounded-[6px] border border-[#e0e0e0] bg-white py-1.5 shadow-xl">
+                  <div className="border-b border-[#efefef] px-3.5 py-2">
+                    <div className="text-[13px] font-bold text-[#303540]">@{username}</div>
+                    <div className="text-[11px] text-[#2e7d32]">Connected via Hive Keychain</div>
+                  </div>
+                  <Link
+                    href={`/@${encodeURIComponent(username)}`}
+                    onClick={() => setUserMenuOpen(false)}
+                    className="block px-3.5 py-2 text-[13px] text-[#303540] hover:bg-[#fff5f4] hover:text-[#af3d36]"
+                  >
+                    👤 My Profile &amp; Blog
+                  </Link>
+                  <Link
+                    href="/editor"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="block px-3.5 py-2 text-[13px] text-[#303540] hover:bg-[#fff5f4] hover:text-[#af3d36]"
+                  >
+                    ✎ Write Post / Review
+                  </Link>
+                  <Link
+                    href={`/@${encodeURIComponent(username)}/transfers`}
+                    onClick={() => setUserMenuOpen(false)}
+                    className="block px-3.5 py-2 text-[13px] text-[#303540] hover:bg-[#fff5f4] hover:text-[#af3d36]"
+                  >
+                    💰 Wallet &amp; Transfers
+                  </Link>
+                  <Link
+                    href={`/@${encodeURIComponent(username)}/favorites`}
+                    onClick={() => setUserMenuOpen(false)}
+                    className="block px-3.5 py-2 text-[13px] text-[#303540] hover:bg-[#fff5f4] hover:text-[#af3d36]"
+                  >
+                    ♥ My Favorites
+                  </Link>
+                  <Link
+                    href={`/@${encodeURIComponent(username)}/activity`}
+                    onClick={() => setUserMenuOpen(false)}
+                    className="block px-3.5 py-2 text-[13px] text-[#303540] hover:bg-[#fff5f4] hover:text-[#af3d36]"
+                  >
+                    ⚡ Account Activity
+                  </Link>
+                  <Link
+                    href={`/@${encodeURIComponent(username)}/permissions`}
+                    onClick={() => setUserMenuOpen(false)}
+                    className="block px-3.5 py-2 text-[13px] text-[#303540] hover:bg-[#fff5f4] hover:text-[#af3d36]"
+                  >
+                    🔑 Authorizations
+                  </Link>
+                  <div className="my-1 border-t border-[#efefef]" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      disconnect();
+                    }}
+                    className="block w-full cursor-pointer px-3.5 py-2 text-left text-[13px] font-medium text-[#d9534f] hover:bg-[#fff5f5]"
+                  >
+                    Log Out
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="Topnav__menu-container flex h-[55px] items-center">
@@ -377,54 +472,76 @@ export function SiteNav() {
 
       {/* Keychain Sign-in Modal */}
       {loginModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-[4px] border border-[#e9e7e7] bg-white p-6 shadow-xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setLoginModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-[6px] border border-[#e9e7e7] bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between">
-              <h2 className="text-section text-[#353535]">{t('wallet.connect')}</h2>
+              <h2 className="text-[18px] font-bold text-[#303540]">{t('wallet.connect')}</h2>
               <button
                 type="button"
                 onClick={() => setLoginModalOpen(false)}
-                className="text-[#99aab5] hover:text-[#353535]"
+                className="cursor-pointer text-[#99aab5] hover:text-[#353535]"
               >
                 ✕
               </button>
             </div>
+            <p className="mt-1 text-[13px] text-[#595959]">
+              Sign in with your Hive account and Hive Keychain browser extension to publish posts, comments, likes, and wallet transactions.
+            </p>
             <form onSubmit={handleLoginSubmit} className="mt-4 space-y-4">
               {!keychainAvailable ? (
-                <p className="text-body-sm text-error" role="alert">
-                  {t('wallet.keychainMissing')}
-                </p>
+                <div className="rounded border border-amber-300 bg-amber-50 p-3 text-[12px] text-amber-900" role="alert">
+                  <div className="font-semibold">{t('wallet.keychainMissing')}</div>
+                  <div className="mt-1">
+                    Install the{' '}
+                    <a
+                      href="https://hive-keychain.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-[#af3d36] underline"
+                    >
+                      Hive Keychain Extension
+                    </a>{' '}
+                    and refresh this page.
+                  </div>
+                </div>
               ) : null}
               <div>
-                <label className="block text-body-sm text-[#657786]" htmlFor="modal-hive-user">
+                <label className="block text-[13px] font-semibold text-[#303540]" htmlFor="modal-hive-user">
                   {t('wallet.usernameLabel')}
                 </label>
                 <input
                   id="modal-hive-user"
                   value={loginInput}
                   onChange={(e) => setLoginInput(e.target.value)}
-                  placeholder="hivecooking"
-                  className="mt-1 w-full rounded-[4px] border border-[#e9e7e7] bg-[#fafbfc] px-3 py-2 text-body text-[#353535]"
+                  placeholder="e.g. hivecooking"
+                  className="mt-1.5 w-full rounded-[4px] border border-[#d9d9d9] bg-[#fafbfc] px-3 py-2 text-[14px] text-[#353535] outline-none focus:border-[#af3d36] focus:bg-white"
                   autoComplete="username"
+                  autoFocus
                 />
               </div>
               {loginError ? (
-                <p className="text-body-sm text-error" role="alert">
+                <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700" role="alert">
                   {loginError}
                 </p>
               ) : null}
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => setLoginModalOpen(false)}
-                  className="rounded-[4px] bg-[#ececec] px-4 py-2 text-body-sm text-[#333333]"
+                  className="cursor-pointer rounded-[4px] bg-[#ececec] px-4 py-2 text-[13px] font-medium text-[#333333] hover:bg-[#e0e0e0]"
                 >
                   {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
-                  disabled={!keychainAvailable || connecting}
-                  className="rounded-[4px] bg-[#af3d36] px-4 py-2 text-body-sm font-semibold text-white disabled:opacity-50"
+                  disabled={!keychainAvailable || connecting || !loginInput.trim()}
+                  className="cursor-pointer rounded-[4px] bg-[#af3d36] px-5 py-2 text-[13px] font-bold text-white hover:bg-[#93312b] disabled:opacity-50"
                 >
                   {connecting ? t('wallet.connecting') : t('wallet.connect')}
                 </button>

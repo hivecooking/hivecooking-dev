@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { Suspense } from 'react';
 
 import { ObjectExplorer } from './object-explorer';
+import { PostEditor } from './post-editor';
 import { UserProfileViewer } from './user-profile-viewer';
 
 const RESERVED_PROFILE_FIRST_SEGMENTS = new Set([
@@ -30,6 +31,11 @@ const RESERVED_PROFILE_FIRST_SEGMENTS = new Set([
 function InnerDispatcher() {
   const pathname = usePathname();
   const norm = pathname.replace(/\/+$/, '') || '/';
+
+  // Match /editor
+  if (norm === '/editor' || norm.startsWith('/editor/')) {
+    return <PostEditor />;
+  }
 
   // Match /object/<objectId>
   const objMatch = norm.match(/^\/object\/([^/]+)/);

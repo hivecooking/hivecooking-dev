@@ -29,8 +29,12 @@ function resolveSigningAccount(operations: readonly HiveOperation[]): string {
       case 'withdraw_vesting':
       case 'delegate_vesting_shares':
       case 'cancel_transfer_from_savings':
+      case 'account_update2':
+      case 'claim_reward_balance':
         accounts.add(
-          op.type === 'withdraw_vesting'
+          op.type === 'withdraw_vesting' ||
+            op.type === 'account_update2' ||
+            op.type === 'claim_reward_balance'
             ? op.account
             : op.type === 'delegate_vesting_shares'
               ? op.delegator
@@ -162,6 +166,26 @@ function toWireOperation(op: HiveOperation): KeychainWireOperation {
         {
           from: op.from,
           request_id: op.request_id,
+        },
+      ];
+    case 'account_update2':
+      return [
+        'account_update2',
+        {
+          account: op.account,
+          json_metadata: op.json_metadata,
+          posting_json_metadata: op.posting_json_metadata,
+          extensions: [...op.extensions],
+        },
+      ];
+    case 'claim_reward_balance':
+      return [
+        'claim_reward_balance',
+        {
+          account: op.account,
+          reward_hive: op.reward_hive,
+          reward_hbd: op.reward_hbd,
+          reward_vests: op.reward_vests,
         },
       ];
   }

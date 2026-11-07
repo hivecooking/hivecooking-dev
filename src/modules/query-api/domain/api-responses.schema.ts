@@ -204,6 +204,69 @@ export const singlePostSchema = z.object({
 
 export type SinglePost = z.infer<typeof singlePostSchema>;
 
+export const discussionCommentItemSchema = z.object({
+  id: z.string(),
+  author: z.string(),
+  permlink: z.string(),
+  parentAuthor: z.string().optional().default(''),
+  parentPermlink: z.string().optional().default(''),
+  rootAuthor: z.string().optional().default(''),
+  rootPermlink: z.string().optional().default(''),
+  depth: z.number().optional().default(1),
+  createdAt: z.string().nullable().optional().default(null),
+  updatedAt: z.string().nullable().optional().default(null),
+  body: z.string().optional().default(''),
+  netVotes: z.number().optional().default(0),
+  children: z.number().optional().default(0),
+  reward: postRewardSchema,
+  votes: postVotesSummarySchema,
+  authorProfile: postAuthorProfileSchema,
+});
+
+export type DiscussionCommentItem = z.infer<typeof discussionCommentItemSchema>;
+
+export const postDiscussionResponseSchema = z.object({
+  rootAuthor: z.string().optional().default(''),
+  rootPermlink: z.string().optional().default(''),
+  rebloggedUsers: z.array(z.string()).optional().default([]),
+  rebloggedByViewer: z.boolean().optional().default(false),
+  rootCommentIds: z.array(z.string()).optional().default([]),
+  childrenById: z.record(z.string(), z.array(z.string())).optional().default({}),
+  comments: z.record(z.string(), discussionCommentItemSchema).optional().default({}),
+});
+
+export type PostDiscussionResponse = z.infer<typeof postDiscussionResponseSchema>;
+
+export const objectUpdateItemSchema = z.object({
+  update_id: z.string(),
+  object_id: z.string(),
+  update_type: z.string(),
+  creator: z.string(),
+  locale: z.string().nullable().optional().default(null),
+  created_at_unix: z.number().optional().default(0),
+  event_seq: z.string().optional().default('0'),
+  transaction_id: z.string().optional().default(''),
+  value_text: z.string().nullable().optional().default(null),
+  value_geo: z.unknown().nullable().optional().default(null),
+  value_json: z.unknown().nullable().optional().default(null),
+  search_text: z.string().nullable().optional().default(null),
+  validity_status: z.string().optional().default('VALID'),
+  for_weight: z.number().optional().default(0),
+  against_weight: z.number().optional().default(0),
+  votes_count: z.number().optional().default(0),
+  viewer_vote: z.string().nullable().optional().default(null),
+});
+
+export type ObjectUpdateItem = z.infer<typeof objectUpdateItemSchema>;
+
+export const objectUpdatesResponseSchema = z.object({
+  items: z.array(objectUpdateItemSchema).optional().default([]),
+  cursor: z.string().nullable().optional().default(null),
+  hasMore: z.boolean().optional().default(false),
+});
+
+export type ObjectUpdatesResponse = z.infer<typeof objectUpdatesResponseSchema>;
+
 export const resolveNestedResponseSchema = z.object({
   items: z.array(projectedObjectWithCountsSchema),
 });

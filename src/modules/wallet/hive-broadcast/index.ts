@@ -38,6 +38,8 @@ export {
   buildReblogOp,
   buildHiveFollowOp,
   buildHiveUnfollowOp,
+  buildAccountUpdate2Op,
+  buildClaimRewardBalanceOp,
   type CommentOptionsBeneficiary,
 } from './operation-builders';
 export { wireCommentOptionsPayload } from './hive-operation-wire';

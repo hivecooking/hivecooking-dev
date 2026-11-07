@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { getHiveCustomJsonId, getRootObjectId } from '@/config/runtime';
@@ -23,10 +23,19 @@ import {
   type ResolvedListItem,
   type SinglePost,
 } from '@/modules/query-api';
-import { buildOdlObjectFollowOp, buildVoteOp, useWallet } from '@/modules/wallet';
+import {
+  buildOdlObjectAuthorityOp,
+  buildOdlObjectFollowOp,
+  buildOdlUpdateCreateWithRankVoteOp,
+  buildReblogOp,
+  buildVoteOp,
+  useWallet,
+} from '@/modules/wallet';
 import { isOk } from '@/shared/domain/result';
 
+import { ObjectEditModal } from './object-edit-modal';
 import { PostBodyRenderer } from './post-body-renderer';
+import { openLoginModal, PostDiscussionSection } from './post-interactions';
 
 type BreadcrumbEntry = {
   id: string;
@@ -150,10 +159,12 @@ function StarRatingDisplay({
   stars,
   label,
   variant = 'card',
+  onRate,
 }: {
   stars: number;
   label: string;
   variant?: 'social' | 'card';
+  onRate?: (star: number) => void;
 }) {
   const isSocial = variant === 'social';
   return (
@@ -178,13 +189,15 @@ function StarRatingDisplay({
                 return (
                   <li
                     key={i}
+                    onClick={onRate ? () => onRate(i + 1) : undefined}
+                    title={onRate ? `Rate ${i + 1} out of 5` : undefined}
                     className={`ant-rate-star ${
                       isFull
                         ? 'ant-rate-star-full text-[#7a7a7a]'
                         : isHalf
                           ? 'ant-rate-star-half ant-rate-star-active text-[#7a7a7a]'
                           : 'ant-rate-star-zero text-[#e8e8e8]'
-                    } ${isSocial ? 'mr-[3px] text-[20px]' : 'mr-[1px] text-[16px]'} relative flex items-center leading-none`}
+                    } ${isSocial ? 'mr-[3px] text-[20px]' : 'mr-[1px] text-[16px]'} ${onRate ? 'cursor-pointer hover:text-[#af3d36]' : ''} relative flex items-center leading-none`}
                   >
                     {isHalf ? (
                       <>
@@ -264,11 +277,39 @@ export function CatalogItemCard({
     object_type: string;
     fields?: Record<string, unknown>;
     previewGallery?: Array<{ url: string; isAvatar?: boolean | null }> | null;
+    isFavorited?: boolean | null;
   };
   href: string;
   inCarousel?: boolean;
 }) {
-  const { username } = useWallet();
+  const { username, broadcast } = useWallet();
+  const [favorited, setFavorited] = useState(Boolean(item.isFavorited));
+  const [favPending, setFavPending] = useState(false);
+
+  const handleToggleCardFav = async () => {
+    if (!username) {
+      openLoginModal();
+      return;
+    }
+    setFavPending(true);
+    try {
+      const nextMethod = favorited ? 'remove' : 'add';
+      const op = buildOdlObjectAuthorityOp({
+        id: getHiveCustomJsonId(),
+        objectId: item.object_id,
+        authorityType: 'administrative',
+        method: nextMethod,
+        required_posting_auths: [username],
+      });
+      await broadcast([op]);
+      setFavorited(!favorited);
+    } catch {
+      // ignore cancelled keychain modal
+    } finally {
+      setFavPending(false);
+    }
+  };
+
   const name = getObjectDisplayName(item);
   const img = getObjectAvatarUrl(item) ?? FALLBACK_FOOD_IMG;
   const price =
@@ -298,7 +339,11 @@ export function CatalogItemCard({
         <button
           type="button"
           aria-label="Favorite"
-          className="HeartButton absolute top-[10px] right-[10px] z-10 text-base text-[#af3d36] hover:scale-110"
+          disabled={favPending}
+          onClick={() => void handleToggleCardFav()}
+          className={`HeartButton absolute top-[10px] right-[10px] z-10 cursor-pointer text-base hover:scale-110 ${
+            favorited ? 'text-[#af3d36]' : 'text-[#99aab5] hover:text-[#af3d36]'
+          }`}
         >
           ♥
         </button>
@@ -423,6 +468,7 @@ export function ObjectExplorer({
   initialSubTab?: string;
 }) {
   const { t } = useI18n();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { username, broadcast } = useWallet();
 
@@ -452,6 +498,11 @@ export function ObjectExplorer({
   const [linkedObjectsOpen, setLinkedObjectsOpen] = useState(true);
   const [hashtagsOpen, setHashtagsOpen] = useState(false);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [isFollowingObj, setIsFollowingObj] = useState(false);
+  const [featuredCommentsOpen, setFeaturedCommentsOpen] = useState(true);
+  const [localStarOverride, setLocalStarOverride] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -480,6 +531,9 @@ export function ObjectExplorer({
 
       const obj = res.value;
       setObjectData(obj);
+      setIsFavorited(Boolean(obj.isFavorited));
+      setIsFollowingObj(false);
+      setLocalStarOverride(null);
       setLoading(false);
 
       // If list has empty fields.listItem but sortCustom.include has IDs (e.g., 4ie2uj-shop), resolve them!
@@ -572,28 +626,92 @@ export function ObjectExplorer({
   const handleFollowObject = useCallback(async () => {
     if (!objectData) return;
     if (!username) {
-      setActionStatus(t('broadcast.needConnect'));
+      openLoginModal();
       return;
     }
     try {
       setActionStatus(t('wallet.connecting'));
+      const method = isFollowingObj ? 'unfollow' : 'follow';
       const op = buildOdlObjectFollowOp({
         id: getHiveCustomJsonId(),
         objectId: objectData.object_id,
-        method: 'follow',
+        method,
         required_posting_auths: [username],
       });
       await broadcast([op]);
-      setActionStatus(t('broadcast.success'));
+      setIsFollowingObj(!isFollowingObj);
+      setActionStatus(isFollowingObj ? 'Unfollowed object' : 'Following object');
     } catch (err) {
       setActionStatus(err instanceof Error ? err.message : t('broadcast.error'));
     }
-  }, [broadcast, objectData, t, username]);
+  }, [broadcast, isFollowingObj, objectData, t, username]);
+
+  const handleToggleFavorite = useCallback(async () => {
+    if (!objectData) return;
+    if (!username) {
+      openLoginModal();
+      return;
+    }
+    try {
+      setActionStatus(t('wallet.connecting'));
+      const method = isFavorited ? 'remove' : 'add';
+      const op = buildOdlObjectAuthorityOp({
+        id: getHiveCustomJsonId(),
+        objectId: objectData.object_id,
+        authorityType: 'administrative',
+        method,
+        required_posting_auths: [username],
+      });
+      await broadcast([op]);
+      setIsFavorited(!isFavorited);
+      setActionStatus(isFavorited ? 'Removed from favorites' : 'Added to favorites ♥');
+    } catch (err) {
+      setActionStatus(err instanceof Error ? err.message : t('broadcast.error'));
+    }
+  }, [broadcast, isFavorited, objectData, t, username]);
+
+  const handleRateObject = useCallback(
+    async (star: number, dimension = 'Rating') => {
+      if (!objectData) return;
+      if (!username) {
+        openLoginModal();
+        return;
+      }
+      try {
+        setActionStatus(`Submitting ${star}★ rating via Hive Keychain...`);
+        const op = buildOdlUpdateCreateWithRankVoteOp({
+          id: getHiveCustomJsonId(),
+          objectId: objectData.object_id,
+          valueText: dimension || 'Rating',
+          creator: username,
+          rank: star * 2000,
+        });
+        await broadcast([op]);
+        setLocalStarOverride(star);
+        setActionStatus(`Rated ${star}★!`);
+      } catch (err) {
+        setActionStatus(err instanceof Error ? err.message : t('broadcast.error'));
+      }
+    },
+    [broadcast, objectData, t, username],
+  );
+
+  const handleWriteReview = useCallback(() => {
+    if (!objectData) return;
+    if (!username) {
+      openLoginModal();
+      return;
+    }
+    const name = getObjectDisplayName(objectData);
+    router.push(
+      `/editor?object=${encodeURIComponent(objectData.object_id)}&name=${encodeURIComponent(name)}&type=${encodeURIComponent(objectData.object_type)}`,
+    );
+  }, [objectData, router, username]);
 
   const handleVotePost = useCallback(
     async (author: string, permlink: string) => {
       if (!username) {
-        setActionStatus(t('broadcast.needConnect'));
+        openLoginModal();
         return;
       }
       try {
@@ -601,6 +719,24 @@ export function ObjectExplorer({
         const op = buildVoteOp(username, author, permlink, 10000);
         await broadcast([op]);
         setActionStatus(t('broadcast.success'));
+      } catch (err) {
+        setActionStatus(err instanceof Error ? err.message : t('broadcast.error'));
+      }
+    },
+    [broadcast, t, username],
+  );
+
+  const handleReblogPost = useCallback(
+    async (author: string, permlink: string) => {
+      if (!username) {
+        openLoginModal();
+        return;
+      }
+      try {
+        setActionStatus('Reblogging post via Hive Keychain...');
+        const op = buildReblogOp(username, author, permlink);
+        await broadcast([op]);
+        setActionStatus('Reblogged!');
       } catch (err) {
         setActionStatus(err instanceof Error ? err.message : t('broadcast.error'));
       }
@@ -727,8 +863,8 @@ export function ObjectExplorer({
             {username ? (
               <button
                 type="button"
-                onClick={() => void handleFollowObject()}
-                className="ml-3 h-[30px] rounded-[4px] border border-[#e9e7e7] bg-white px-[15px] text-[16px] font-normal text-[rgba(0,0,0,0.65)] hover:border-[#af3d36]"
+                onClick={() => setEditModalOpen(true)}
+                className="ml-3 h-[30px] cursor-pointer rounded-[4px] border border-[#e9e7e7] bg-white px-[15px] text-[16px] font-normal text-[rgba(0,0,0,0.65)] hover:border-[#af3d36]"
               >
                 Edit
               </button>
@@ -739,6 +875,13 @@ export function ObjectExplorer({
             Earns commissions on purchases
           </div>
         </div>
+
+        <ObjectEditModal
+          objectId={objectData.object_id}
+          objectName={displayName}
+          open={editModalOpen}
+          onClose={() => setEditModalOpen(false)}
+        />
 
         {/* 5-Column Flex Wrap Grid (.Checklist__list) */}
         {sortedItems.length > 0 ? (
@@ -914,25 +1057,36 @@ export function ObjectExplorer({
                 <button
                   type="button"
                   onClick={() => void handleFollowObject()}
-                  className="rounded-[4px] bg-[#af3d36] px-4 py-1 text-xs font-semibold text-white hover:opacity-90"
+                  className="cursor-pointer rounded-[4px] bg-[#af3d36] px-4 py-1 text-xs font-semibold text-white hover:opacity-90"
                 >
-                  Follow
+                  {isFollowingObj ? 'Following' : 'Follow'}
                 </button>
                 <button
                   type="button"
-                  className="rounded-[4px] border border-[#d9d9d9] bg-white px-3.5 py-1 text-xs text-[#353535] hover:border-[#af3d36]"
+                  onClick={() => setEditModalOpen(true)}
+                  className="cursor-pointer rounded-[4px] border border-[#d9d9d9] bg-white px-3.5 py-1 text-xs text-[#353535] hover:border-[#af3d36]"
                 >
                   Edit
                 </button>
                 <button
                   type="button"
                   aria-label="Favorite"
-                  className="ml-1 text-lg text-[#99aab5] hover:text-[#af3d36]"
+                  onClick={() => void handleToggleFavorite()}
+                  className={`ml-1 cursor-pointer text-lg hover:text-[#af3d36] ${
+                    isFavorited ? 'text-[#af3d36]' : 'text-[#99aab5]'
+                  }`}
                 >
                   ♥
                 </button>
               </div>
             ) : null}
+
+            <ObjectEditModal
+              objectId={objectData.object_id}
+              objectName={displayName}
+              open={editModalOpen}
+              onClose={() => setEditModalOpen(false)}
+            />
 
             {actionStatus ? (
               <p className="mb-2 text-xs font-medium text-[#af3d36]">{actionStatus}</p>
@@ -940,7 +1094,12 @@ export function ObjectExplorer({
 
             <div className="SocialProduct__ratings mb-[15px] flex flex-wrap">
               <div className="SocialProduct__ratings-item mr-[30px]">
-                <StarRatingDisplay stars={stars} label={ratingLabel} variant="social" />
+                <StarRatingDisplay
+                  stars={localStarOverride ?? stars}
+                  label={ratingLabel}
+                  variant="social"
+                  onRate={(star) => void handleRateObject(star, ratingLabel)}
+                />
               </div>
             </div>
 
@@ -1225,14 +1384,25 @@ export function ObjectExplorer({
                             <i className="iconfont icon-praise_fill" />
                             <span>{featuredPost.votes?.totalCount ?? 0}</span>
                           </button>
-                          <span className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setFeaturedCommentsOpen((v) => !v)}
+                            className="flex cursor-pointer items-center gap-1 text-[#99aab5] hover:text-[#af3d36]"
+                          >
                             <i className="iconfont icon-message_fill" />
                             <span>{featuredPost.children ? featuredPost.children : ''}</span>
-                          </span>
-                          <span className="flex items-center gap-1">
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              featuredPost.author &&
+                              void handleReblogPost(featuredPost.author, featuredPost.permlink)
+                            }
+                            className="flex cursor-pointer items-center gap-1 text-[#99aab5] hover:text-[#af3d36]"
+                          >
                             <i className="iconfont icon-share1" />
                             <span>3</span>
-                          </span>
+                          </button>
                           <i className="iconfont icon-more text-[20px] text-[#f87007]" />
                         </div>
                       </div>
@@ -1249,6 +1419,12 @@ export function ObjectExplorer({
                             </span>
                           </div>
                         </div>
+                        {featuredCommentsOpen && featuredPost.author ? (
+                          <PostDiscussionSection
+                            author={featuredPost.author}
+                            permlink={featuredPost.permlink}
+                          />
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -1286,6 +1462,7 @@ export function ObjectExplorer({
               </div>
               <button
                 type="button"
+                onClick={handleWriteReview}
                 className="SocialProductReviews__link mr-[20px] cursor-pointer border-0 bg-transparent pb-[8px] text-[18px] leading-[27px] font-semibold text-[#af3d36] uppercase"
               >
                 Write review
@@ -1588,25 +1765,36 @@ export function ObjectExplorer({
               <button
                 type="button"
                 onClick={() => void handleFollowObject()}
-                className="rounded-[4px] bg-[#af3d36] px-4 py-1 text-xs font-semibold text-white hover:opacity-90"
+                className="cursor-pointer rounded-[4px] bg-[#af3d36] px-4 py-1 text-xs font-semibold text-white hover:opacity-90"
               >
-                Follow
+                {isFollowingObj ? 'Following' : 'Follow'}
               </button>
               <button
                 type="button"
-                className="rounded-[4px] border border-[#d9d9d9] bg-white px-3.5 py-1 text-xs text-[#353535] hover:border-[#af3d36]"
+                onClick={() => setEditModalOpen(true)}
+                className="cursor-pointer rounded-[4px] border border-[#d9d9d9] bg-white px-3.5 py-1 text-xs text-[#353535] hover:border-[#af3d36]"
               >
                 Edit
               </button>
               <button
                 type="button"
                 aria-label="Favorite"
-                className="ml-1 text-lg text-[#99aab5] hover:text-[#af3d36]"
+                onClick={() => void handleToggleFavorite()}
+                className={`ml-1 cursor-pointer text-lg hover:text-[#af3d36] ${
+                  isFavorited ? 'text-[#af3d36]' : 'text-[#99aab5]'
+                }`}
               >
                 ♥
               </button>
             </div>
           ) : null}
+
+          <ObjectEditModal
+            objectId={objectData.object_id}
+            objectName={displayName}
+            open={editModalOpen}
+            onClose={() => setEditModalOpen(false)}
+          />
 
           {actionStatus ? (
             <p className="mb-2 text-xs font-medium text-[#af3d36]">{actionStatus}</p>
@@ -1615,7 +1803,12 @@ export function ObjectExplorer({
           <div className="SocialProduct__ratings mb-[15px] flex flex-wrap">
             {ratingsList.map((r, i) => (
               <div key={`${r.dimension}-${i}`} className="SocialProduct__ratings-item mr-[30px]">
-                <StarRatingDisplay stars={r.stars} label={r.dimension} variant="social" />
+                <StarRatingDisplay
+                  stars={i === 0 && localStarOverride !== null ? localStarOverride : r.stars}
+                  label={r.dimension}
+                  variant="social"
+                  onRate={(star) => void handleRateObject(star, r.dimension)}
+                />
               </div>
             ))}
           </div>
@@ -1976,6 +2169,7 @@ export function ObjectExplorer({
             </div>
             <button
               type="button"
+              onClick={handleWriteReview}
               className="SocialProduct__heading SocialProductReviews__write cursor-pointer border-0 bg-transparent mr-[20px] p-0 pb-[8px] text-[18px] leading-[27px] font-semibold text-[#af3d36] uppercase"
             >
               Write review
@@ -2022,7 +2216,10 @@ export function ObjectExplorer({
               })}
             </div>
           ) : (
-            <div className="FeedMasonry__emptyFeed m-[20px] rounded-[4px] border border-[#af3d36] py-[20px] text-center text-[18px] leading-[27px] font-medium text-[#af3d36]">
+            <div
+              onClick={handleWriteReview}
+              className="FeedMasonry__emptyFeed m-[20px] cursor-pointer rounded-[4px] border border-[#af3d36] py-[20px] text-center text-[18px] leading-[27px] font-medium text-[#af3d36] hover:bg-[rgba(175,61,54,0.04)]"
+            >
               Be the first to write a review
             </div>
           )}

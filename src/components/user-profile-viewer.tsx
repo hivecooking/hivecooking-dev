@@ -57,10 +57,23 @@ import {
   type WaivWalletResponse,
   type WalletHistoryResponse,
 } from '@/modules/query-api';
-import { buildHiveFollowOp, buildHiveUnfollowOp, buildVoteOp, useWallet } from '@/modules/wallet';
+import {
+  buildClaimRewardBalanceOp,
+  buildHiveFollowOp,
+  buildHiveUnfollowOp,
+  useWallet,
+} from '@/modules/wallet';
 import { isOk } from '@/shared/domain/result';
 
 import { PostBodyRenderer } from './post-body-renderer';
+import {
+  openLoginModal,
+  PostDiscussionSection,
+  QuickThreadComposer,
+  ReblogButton,
+  VoteButtonWithSlider,
+} from './post-interactions';
+import { WalletActionModal, type WalletModalAction } from './wallet-modals';
 
 // --- Helpers & Icons ---
 
@@ -358,12 +371,12 @@ function ProfileObjectCard({
 function ProfileStoryCard({
   post,
   feedTab,
-  onVote,
 }: {
   post: FeedPostItem;
   feedTab?: string;
-  onVote: (author: string, permlink: string) => void;
+  onVote?: (author: string, permlink: string) => void;
 }) {
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const authorName = post.author;
   const displayAuthor = post.authorProfile?.displayName || authorName;
   const avatarUrl = post.authorProfile?.avatarUrl;
@@ -474,28 +487,33 @@ function ProfileStoryCard({
 
       <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#e9e7e7] pt-3">
         <div className="flex items-center gap-3 text-[14px] text-[#99aab5]">
+          <VoteButtonWithSlider
+            author={authorName}
+            permlink={post.permlink}
+            initialCount={post.votes?.totalCount ?? 0}
+            initialVoted={Boolean(post.votes?.voted)}
+          />
           <button
             type="button"
-            onClick={() => onVote(authorName, post.permlink)}
-            className="inline-flex items-center gap-1.5 rounded-[24px] px-2 py-1 text-[#99aab5] hover:bg-[#f5f6f7] hover:text-[#af3d36]"
-          >
-            <IconThumbUp />
-            {post.votes?.totalCount ? <span>{post.votes.totalCount}</span> : null}
-          </button>
-          <Link
-            href={postHref}
-            className="inline-flex items-center gap-1.5 rounded-[24px] px-2 py-1 text-[#99aab5] hover:bg-[#f5f6f7] hover:text-[#af3d36]"
+            onClick={() => setCommentsOpen((prev) => !prev)}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-[24px] px-2 py-1 text-[#99aab5] hover:bg-[#f5f6f7] hover:text-[#af3d36]"
+            title="Toggle comments & reply"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
-            {post.children ? <span>{post.children}</span> : null}
-          </Link>
+            <span>{post.children ?? 0}</span>
+          </button>
+          <ReblogButton author={authorName} permlink={post.permlink} />
         </div>
         <span className="inline-flex items-center rounded-[24px] border border-[#e9e7e7] bg-[#f5f6f7] px-2.5 py-0.5 font-mono text-[13px] font-medium text-[#333333] tabular-nums">
           {post.reward?.label ?? '$0.00'}
         </span>
       </footer>
+
+      {commentsOpen ? (
+        <PostDiscussionSection author={authorName} permlink={post.permlink} initialOpen={true} />
+      ) : null}
     </article>
   );
 }
@@ -1260,6 +1278,7 @@ function WalletBalanceRow({
   subtitle,
   amount,
   suffix,
+  actions,
   borderBottom = true,
 }: {
   icon?: ReactNode;
@@ -1267,12 +1286,13 @@ function WalletBalanceRow({
   subtitle?: string;
   amount: string;
   suffix?: string;
+  actions?: ReactNode;
   borderBottom?: boolean;
 }) {
   return (
     <div
       className={[
-        'flex items-center gap-4 py-4',
+        'flex flex-wrap items-center gap-4 py-4',
         borderBottom ? 'border-b border-[#e9e7e7]' : '',
       ].join(' ')}
     >
@@ -1281,10 +1301,11 @@ function WalletBalanceRow({
         <p className="text-[16px] font-semibold text-[#333333]">{title}</p>
         {subtitle ? <p className="text-[14px] text-[#99aab5]">{subtitle}</p> : null}
       </div>
-      <div className="flex shrink-0 flex-col items-end">
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
         <p className="font-mono text-[16px] font-semibold text-[#333333] tabular-nums">
           {amount} {suffix ? <span className="text-[14px] text-[#99aab5]">{suffix}</span> : null}
         </p>
+        {actions ? <div className="flex flex-wrap items-center gap-1.5">{actions}</div> : null}
       </div>
     </div>
   );
@@ -1293,15 +1314,19 @@ function WalletBalanceRow({
 function WaivWalletView({
   wallet,
   history,
+  onAction,
 }: {
   accountName: string;
   wallet: WaivWalletResponse | null;
   history: WalletHistoryResponse | null;
+  onAction: (action: WalletModalAction) => void;
 }) {
   const display = (wallet?.display ?? {}) as Record<string, unknown>;
   const liquidWaiv = String(display.liquidWaiv ?? '0');
   const waivPower = String(display.waivPower ?? '0');
   const estUsd = String(display.estAccountValueUsd ?? '0.00');
+  const liquidNum = parseFloat(liquidWaiv.replace(/,/g, '')) || 0;
+  const stakedNum = parseFloat(waivPower.replace(/,/g, '')) || 0;
 
   return (
     <div className="space-y-4">
@@ -1328,6 +1353,40 @@ function WaivWalletView({
             subtitle="Liquid WAIV tokens"
             amount={liquidWaiv}
             suffix="WAIV"
+            actions={
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAction({
+                      kind: 'TRANSFER',
+                      symbol: 'WAIV',
+                      precision: 8,
+                      availableBalance: liquidNum,
+                      isEngine: true,
+                    })
+                  }
+                  className="cursor-pointer rounded border border-[#af3d36] px-2.5 py-0.5 text-[12px] font-semibold text-[#af3d36] hover:bg-[#af3d36] hover:text-white"
+                >
+                  Transfer
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAction({
+                      kind: 'POWER_UP',
+                      symbol: 'WAIV',
+                      precision: 8,
+                      availableBalance: liquidNum,
+                      isEngine: true,
+                    })
+                  }
+                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+                >
+                  Power Up
+                </button>
+              </>
+            }
           />
           <WalletBalanceRow
             icon={
@@ -1340,6 +1399,40 @@ function WaivWalletView({
             amount={waivPower}
             suffix="WP"
             borderBottom={false}
+            actions={
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAction({
+                      kind: 'DELEGATE',
+                      symbol: 'WAIV',
+                      precision: 8,
+                      availableStaked: stakedNum,
+                      isEngine: true,
+                    })
+                  }
+                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+                >
+                  Delegate
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAction({
+                      kind: 'POWER_DOWN',
+                      symbol: 'WAIV',
+                      precision: 8,
+                      availableStaked: stakedNum,
+                      isEngine: true,
+                    })
+                  }
+                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+                >
+                  Power Down
+                </button>
+              </>
+            }
           />
         </div>
       </section>
@@ -1375,12 +1468,20 @@ function HiveWalletView({
   wallet,
   activity,
   accountName,
+  onAction,
+  onClaimRewards,
+  claimingRewards,
 }: {
   accountName: string;
   wallet: HiveWalletResponse | null;
   activity: UserActivityResponse | null;
+  onAction: (action: WalletModalAction) => void;
+  onClaimRewards: (rewards: { hive: string; hbd: string; vests: string }) => void;
+  claimingRewards?: boolean;
 }) {
   const display = (wallet?.display ?? {}) as Record<string, unknown>;
+  const chain = (wallet?.chain ?? {}) as Record<string, unknown>;
+  const pendingRewards = (wallet?.pendingRewards ?? {}) as Record<string, unknown>;
   const liquidHive = String(display.liquidHive ?? '0.000');
   const hivePower = String(display.hivePower ?? '0.000');
   const rcMax = String(display.rcMax ?? '0');
@@ -1389,8 +1490,45 @@ function HiveWalletView({
   const hbdSavings = String(display.hbdSavings ?? '0.000');
   const estUsd = String(display.estAccountValueUsd ?? '0.00');
 
+  const hiveNum = parseFloat(liquidHive.replace(/,/g, '')) || 0;
+  const hpNum = parseFloat(hivePower.replace(/,/g, '')) || 0;
+  const hiveSavNum = parseFloat(hiveSavings.replace(/,/g, '')) || 0;
+  const hbdNum = parseFloat(hbdLiquid.replace(/,/g, '')) || 0;
+  const hbdSavNum = parseFloat(hbdSavings.replace(/,/g, '')) || 0;
+  const totalVestingShares = String(chain.totalVestingShares ?? '349314312874.598569 VESTS');
+  const totalVestingFundSteem = String(chain.totalVestingFundSteem ?? '217801154.288 HIVE');
+
+  const rewardHive = String(pendingRewards.rewardHive ?? '0.000 HIVE');
+  const rewardHbd = String(pendingRewards.rewardHbd ?? '0.000 HBD');
+  const rewardVests = String(pendingRewards.rewardVests ?? '0.000000 VESTS');
+  const hasPendingRewards =
+    parseFloat(rewardHive) > 0 || parseFloat(rewardHbd) > 0 || parseFloat(rewardVests) > 0;
+
   return (
     <div className="space-y-4">
+      {hasPendingRewards ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[#af3d36]/30 bg-[#fff5f4] px-4 py-3">
+          <div className="text-[14px] text-[#303540]">
+            <span className="font-semibold text-[#af3d36]">Pending Rewards:</span>{' '}
+            {[rewardHive, rewardHbd, rewardVests].filter((x) => parseFloat(x) > 0).join(' · ')}
+          </div>
+          <button
+            type="button"
+            disabled={claimingRewards}
+            onClick={() =>
+              onClaimRewards({
+                hive: rewardHive,
+                hbd: rewardHbd,
+                vests: rewardVests,
+              })
+            }
+            className="cursor-pointer rounded bg-[#af3d36] px-3.5 py-1.5 text-[13px] font-bold text-white hover:bg-[#93312b] disabled:opacity-50"
+          >
+            {claimingRewards ? 'Claiming...' : 'Claim Rewards'}
+          </button>
+        </div>
+      ) : null}
+
       <section className="overflow-hidden rounded-[8px] border border-[#e9e7e7] bg-white shadow-xs">
         <div className="flex items-start gap-4 border-b border-[#e9e7e7] bg-[#d9534f]/8 px-4 py-4">
           <div className="hidden h-10 w-10 shrink-0 sm:block" aria-hidden />
@@ -1414,6 +1552,56 @@ function HiveWalletView({
             subtitle="Liquid HIVE tokens"
             amount={liquidHive}
             suffix="HIVE"
+            actions={
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAction({
+                      kind: 'TRANSFER',
+                      symbol: 'HIVE',
+                      precision: 3,
+                      availableBalance: hiveNum,
+                      isEngine: false,
+                    })
+                  }
+                  className="cursor-pointer rounded border border-[#af3d36] px-2.5 py-0.5 text-[12px] font-semibold text-[#af3d36] hover:bg-[#af3d36] hover:text-white"
+                >
+                  Transfer
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAction({
+                      kind: 'POWER_UP',
+                      symbol: 'HIVE',
+                      precision: 3,
+                      availableBalance: hiveNum,
+                      isEngine: false,
+                    })
+                  }
+                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+                >
+                  Power Up
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAction({
+                      kind: 'TRANSFER',
+                      symbol: 'HIVE',
+                      precision: 3,
+                      availableBalance: hiveNum,
+                      isEngine: false,
+                      savingsMode: 'DEPOSIT',
+                    })
+                  }
+                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+                >
+                  To Savings
+                </button>
+              </>
+            }
           />
           <WalletBalanceRow
             icon={
@@ -1425,18 +1613,90 @@ function HiveWalletView({
             subtitle="Staked HIVE tokens"
             amount={hivePower}
             suffix="HP"
+            actions={
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAction({
+                      kind: 'DELEGATE',
+                      symbol: 'HP',
+                      precision: 3,
+                      availableStaked: hpNum,
+                      isEngine: false,
+                      totalVestingShares,
+                      totalVestingFundSteem,
+                    })
+                  }
+                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+                >
+                  Delegate
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAction({
+                      kind: 'POWER_DOWN',
+                      symbol: 'HP',
+                      precision: 3,
+                      availableStaked: hpNum,
+                      isEngine: false,
+                      totalVestingShares,
+                      totalVestingFundSteem,
+                    })
+                  }
+                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+                >
+                  Power Down
+                </button>
+              </>
+            }
           />
           <WalletBalanceRow
             title="Resource Credits"
             subtitle="Maximum transaction capacity"
             amount={rcMax}
             suffix="b RC"
+            actions={
+              <button
+                type="button"
+                onClick={() =>
+                  onAction({
+                    kind: 'DELEGATE',
+                    symbol: 'RC',
+                    precision: 2,
+                    isEngine: false,
+                  })
+                }
+                className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+              >
+                Delegate RC
+              </button>
+            }
           />
           <WalletBalanceRow
             title="HIVE Savings"
             subtitle="3-day withdrawal waiting period"
             amount={hiveSavings}
             suffix="HIVE"
+            actions={
+              <button
+                type="button"
+                onClick={() =>
+                  onAction({
+                    kind: 'TRANSFER',
+                    symbol: 'HIVE',
+                    precision: 3,
+                    availableBalance: hiveSavNum,
+                    isEngine: false,
+                    savingsMode: 'WITHDRAW',
+                  })
+                }
+                className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+              >
+                Withdraw
+              </button>
+            }
           />
           <WalletBalanceRow
             icon={<IconHbdBadge size={28} />}
@@ -1444,6 +1704,41 @@ function HiveWalletView({
             subtitle="Hive Backed Dollars"
             amount={hbdLiquid}
             suffix="HBD"
+            actions={
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAction({
+                      kind: 'TRANSFER',
+                      symbol: 'HBD',
+                      precision: 3,
+                      availableBalance: hbdNum,
+                      isEngine: false,
+                    })
+                  }
+                  className="cursor-pointer rounded border border-[#af3d36] px-2.5 py-0.5 text-[12px] font-semibold text-[#af3d36] hover:bg-[#af3d36] hover:text-white"
+                >
+                  Transfer
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAction({
+                      kind: 'TRANSFER',
+                      symbol: 'HBD',
+                      precision: 3,
+                      availableBalance: hbdNum,
+                      isEngine: false,
+                      savingsMode: 'DEPOSIT',
+                    })
+                  }
+                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+                >
+                  To Savings
+                </button>
+              </>
+            }
           />
           <WalletBalanceRow
             title="HBD Savings"
@@ -1451,6 +1746,24 @@ function HiveWalletView({
             amount={hbdSavings}
             suffix="HBD"
             borderBottom={false}
+            actions={
+              <button
+                type="button"
+                onClick={() =>
+                  onAction({
+                    kind: 'TRANSFER',
+                    symbol: 'HBD',
+                    precision: 3,
+                    availableBalance: hbdSavNum,
+                    isEngine: false,
+                    savingsMode: 'WITHDRAW',
+                  })
+                }
+                className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+              >
+                Withdraw
+              </button>
+            }
           />
         </div>
       </section>
@@ -1482,8 +1795,10 @@ function HiveWalletView({
 
 function EngineWalletView({
   wallet,
+  onAction,
 }: {
   wallet: EngineWalletResponse | null;
+  onAction: (action: WalletModalAction) => void;
 }) {
   const combined = [...(wallet?.pinnedTokens ?? []), ...(wallet?.tokens ?? [])];
   const estUsd = (wallet?.estimatedAccountValueUsd ?? 0).toFixed(2);
@@ -1509,27 +1824,85 @@ function EngineWalletView({
         {combined.length === 0 ? (
           <p className="py-4 text-[14px] text-[#99aab5]">No Hive Engine tokens found.</p>
         ) : (
-          combined.map((token) => (
-            <div key={token.symbol} className="flex items-center gap-4 py-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#e9e7e7] bg-[#fafafa]">
-                {token.iconUrl ? (
-                  <img src={token.iconUrl} alt={token.symbol} className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-xs font-bold text-[#af3d36]">{token.symbol.slice(0, 3)}</span>
-                )}
+          combined.map((token) => {
+            const balNum = parseFloat(String(token.balance).replace(/,/g, '')) || 0;
+            const stakeNum = parseFloat(String(token.stake).replace(/,/g, '')) || 0;
+            return (
+              <div key={token.symbol} className="flex flex-wrap items-center gap-4 py-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#e9e7e7] bg-[#fafafa]">
+                  {token.iconUrl ? (
+                    <img src={token.iconUrl} alt={token.symbol} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-xs font-bold text-[#af3d36]">{token.symbol.slice(0, 3)}</span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[16px] font-semibold text-[#333333]">{token.symbol}</p>
+                  <p className="text-[14px] text-[#99aab5]">{token.name}</p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <p className="font-mono text-[14px] text-[#99aab5] tabular-nums">
+                    {token.balance}{' '}
+                    {stakeNum > 0 ? <span className="text-[12px]">({token.stake} staked)</span> : null}
+                  </p>
+                  <p className="font-mono text-[16px] font-semibold text-[#333333] tabular-nums">
+                    ${token.usdEstimate.toFixed(2)}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onAction({
+                          kind: 'TRANSFER',
+                          symbol: token.symbol,
+                          precision: token.precision ?? 3,
+                          availableBalance: balNum,
+                          isEngine: true,
+                        })
+                      }
+                      className="cursor-pointer rounded border border-[#af3d36] px-2 py-0.5 text-[11px] font-semibold text-[#af3d36] hover:bg-[#af3d36] hover:text-white"
+                    >
+                      Transfer
+                    </button>
+                    {token.stakingEnabled ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onAction({
+                              kind: 'POWER_UP',
+                              symbol: token.symbol,
+                              precision: token.precision ?? 3,
+                              availableBalance: balNum,
+                              isEngine: true,
+                            })
+                          }
+                          className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2 py-0.5 text-[11px] text-[#333333] hover:border-[#af3d36]"
+                        >
+                          Stake
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onAction({
+                              kind: 'POWER_DOWN',
+                              symbol: token.symbol,
+                              precision: token.precision ?? 3,
+                              availableStaked: stakeNum,
+                              isEngine: true,
+                            })
+                          }
+                          className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2 py-0.5 text-[11px] text-[#333333] hover:border-[#af3d36]"
+                        >
+                          Unstake
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[16px] font-semibold text-[#333333]">{token.symbol}</p>
-                <p className="text-[14px] text-[#99aab5]">{token.name}</p>
-              </div>
-              <div className="flex shrink-0 flex-col items-end gap-0.5">
-                <p className="font-mono text-[14px] text-[#99aab5] tabular-nums">{token.balance}</p>
-                <p className="font-mono text-[16px] font-semibold text-[#333333] tabular-nums">
-                  ${token.usdEstimate.toFixed(2)}
-                </p>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </section>
@@ -2054,19 +2427,42 @@ export function UserProfileViewer({
     socialSort,
   ]);
 
-  const handleVote = useCallback(
-    async (author: string, postPermlink: string) => {
+  const [walletModalAction, setWalletModalAction] = useState<WalletModalAction | null>(null);
+  const [claimingRewards, setClaimingRewards] = useState(false);
+  const [followedRows, setFollowedRows] = useState<Record<string, boolean>>({});
+
+  const openWalletModal = useCallback(
+    (action: WalletModalAction) => {
       if (!viewer) {
-        setVoteStatus(t('broadcast.needConnect'));
+        openLoginModal();
         return;
       }
+      setWalletModalAction(action);
+    },
+    [viewer],
+  );
+
+  const handleClaimRewards = useCallback(
+    async (rewards: { hive: string; hbd: string; vests: string }) => {
+      if (!viewer) {
+        openLoginModal();
+        return;
+      }
+      setClaimingRewards(true);
+      setVoteStatus(null);
       try {
-        setVoteStatus(t('wallet.connecting'));
-        const op = buildVoteOp(viewer, author, postPermlink, 10000);
+        const op = buildClaimRewardBalanceOp({
+          account: viewer,
+          reward_hive: rewards.hive,
+          reward_hbd: rewards.hbd,
+          reward_vests: rewards.vests,
+        });
         await broadcast([op]);
-        setVoteStatus(t('broadcast.success'));
+        setVoteStatus('Pending rewards claimed to your wallet!');
       } catch (err) {
         setVoteStatus(err instanceof Error ? err.message : t('broadcast.error'));
+      } finally {
+        setClaimingRewards(false);
       }
     },
     [broadcast, t, viewer],
@@ -2074,7 +2470,7 @@ export function UserProfileViewer({
 
   const handleFollowToggle = useCallback(async () => {
     if (!viewer) {
-      router.push('/?login=1');
+      openLoginModal();
       return;
     }
     try {
@@ -2087,7 +2483,27 @@ export function UserProfileViewer({
     } catch {
       setIsFollowingUser((prev) => !prev);
     }
-  }, [broadcast, isFollowingUser, router, username, viewer]);
+  }, [broadcast, isFollowingUser, username, viewer]);
+
+  const handleRowFollowToggle = useCallback(
+    async (targetUser: string, currentlyFollowing: boolean) => {
+      if (!viewer) {
+        openLoginModal();
+        return;
+      }
+      const nextFollow = !currentlyFollowing;
+      setFollowedRows((prev) => ({ ...prev, [targetUser]: nextFollow }));
+      try {
+        const op = nextFollow
+          ? buildHiveFollowOp(viewer, targetUser)
+          : buildHiveUnfollowOp(viewer, targetUser);
+        await broadcast([op]);
+      } catch {
+        setFollowedRows((prev) => ({ ...prev, [targetUser]: currentlyFollowing }));
+      }
+    },
+    [broadcast, viewer],
+  );
 
   // --- Standalone Single Post View (`/@username/permlink`) ---
   if (permlink) {
@@ -2170,13 +2586,13 @@ export function UserProfileViewer({
                     {singlePost.reward.label}
                   </span>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => void handleVote(authorName, singlePost.permlink)}
-                  className="rounded-[24px] bg-[#af3d36] px-3.5 py-1.5 text-[14px] font-semibold text-white hover:bg-[#93312b]"
-                >
-                  ▲ {t('broadcast.vote')} ({singlePost.votes?.totalCount ?? 0})
-                </button>
+                <VoteButtonWithSlider
+                  author={authorName}
+                  permlink={singlePost.permlink}
+                  initialCount={singlePost.votes?.totalCount ?? 0}
+                  initialVoted={Boolean(singlePost.votes?.voted)}
+                />
+                <ReblogButton author={authorName} permlink={singlePost.permlink} />
               </div>
             </div>
 
@@ -2203,6 +2619,12 @@ export function UserProfileViewer({
                 <PostBodyRenderer body={singlePost.body} />
               </div>
             ) : null}
+
+            <PostDiscussionSection
+              author={authorName}
+              permlink={singlePost.permlink}
+              initialOpen={true}
+            />
           </article>
 
           <aside className="space-y-4 lg:col-span-1">
@@ -2398,7 +2820,7 @@ export function UserProfileViewer({
                     type="button"
                     onClick={() => void handleFollowToggle()}
                     className={[
-                      'rounded-[24px] px-4 py-2 text-[14px] font-medium transition-colors',
+                      'cursor-pointer rounded-[24px] px-4 py-2 text-[14px] font-medium transition-colors',
                       isFollowingUser
                         ? 'border border-[#e9e7e7] bg-white text-[#333333] hover:border-[#d9534f] hover:text-[#d9534f]'
                         : 'bg-[#af3d36] text-white hover:bg-[#93312b]',
@@ -2410,7 +2832,20 @@ export function UserProfileViewer({
                 {!loadingHero && isSameUser ? (
                   <button
                     type="button"
-                    className="rounded-[24px] border border-[#e9e7e7] bg-white px-4 py-2 text-[14px] font-medium text-[#333333] hover:bg-[#f5f6f7]"
+                    onClick={() =>
+                      openWalletModal({
+                        kind: 'EDIT_PROFILE',
+                        initialProfile: {
+                          displayName: profile?.displayName,
+                          about: sidebar?.about,
+                          location: sidebar?.location ?? '',
+                          website: sidebar?.website ?? '',
+                          avatarUrl: profile?.avatarUrl,
+                          coverImageUrl: profile?.coverImageUrl,
+                        },
+                      })
+                    }
+                    className="cursor-pointer rounded-[24px] border border-[#e9e7e7] bg-white px-4 py-2 text-[14px] font-medium text-[#333333] hover:bg-[#f5f6f7]"
                   >
                     Edit profile
                   </button>
@@ -2640,6 +3075,36 @@ export function UserProfileViewer({
                     </div>
                   ) : null}
 
+                  {primarySection === 'feed' && headSegment === 'threads' ? (
+                    <QuickThreadComposer
+                      onPublished={(newThread) => {
+                        setFeedPosts((prev) => [
+                          {
+                            id: `${newThread.author}/${newThread.permlink}`,
+                            author: newThread.author,
+                            permlink: newThread.permlink,
+                            title: '',
+                            excerpt: newThread.body,
+                            body: newThread.body,
+                            createdAt: new Date().toISOString(),
+                            feedAt: new Date().toISOString(),
+                            children: 0,
+                            reward: { amount: 0, currency: 'USD', label: '$0.00', phase: 'pending' },
+                            votes: { totalCount: 0, previewVoters: [], voted: false },
+                            authorProfile: {
+                              name: newThread.author,
+                              displayName: newThread.author,
+                              avatarUrl: `https://images.hive.blog/u/${newThread.author}/avatar`,
+                              reputation: null,
+                            },
+                            objects: [],
+                          },
+                          ...prev,
+                        ]);
+                      }}
+                    />
+                  ) : null}
+
                   {/* Main Center Content */}
                   {tabLoading ? (
                     <div className="space-y-3">
@@ -2685,7 +3150,6 @@ export function UserProfileViewer({
                             key={`${post.author}/${post.permlink}`}
                             post={post}
                             feedTab={headSegment || 'posts'}
-                            onVote={(a, p) => void handleVote(a, p)}
                           />
                         ))}
                       </div>
@@ -2761,14 +3225,18 @@ export function UserProfileViewer({
                         accountName={username}
                         wallet={hiveWallet}
                         activity={hiveWalletActivity}
+                        onAction={openWalletModal}
+                        onClaimRewards={(r) => void handleClaimRewards(r)}
+                        claimingRewards={claimingRewards}
                       />
                     ) : walletType === 'ENGINE' ? (
-                      <EngineWalletView wallet={engineWallet} />
+                      <EngineWalletView wallet={engineWallet} onAction={openWalletModal} />
                     ) : (
                       <WaivWalletView
                         accountName={username}
                         wallet={waivWallet}
                         history={waivHistory}
+                        onAction={openWalletModal}
                       />
                     )
                   ) : primarySection === 'followers' ? (
@@ -2818,44 +3286,55 @@ export function UserProfileViewer({
                           </p>
                         ) : (
                           <ul className="divide-y divide-[#e9e7e7]">
-                            {socialUsersList.items.map((row) => (
-                              <li key={row.name} className="flex items-center gap-3 py-3">
-                                <Link href={`/@${encodeURIComponent(row.name)}`} className="shrink-0">
-                                  {row.avatarUrl ? (
-                                    <img
-                                      src={row.avatarUrl}
-                                      alt={row.name}
-                                      className="h-11 w-11 rounded-full border border-[#e9e7e7] object-cover"
-                                    />
-                                  ) : (
-                                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#af3d36] text-sm font-bold text-white">
-                                      {row.name[0]?.toUpperCase() || 'U'}
-                                    </div>
-                                  )}
-                                </Link>
-                                <div className="min-w-0 flex-1">
-                                  <Link
-                                    href={`/@${encodeURIComponent(row.name)}`}
-                                    className="font-medium text-[#333333] hover:underline"
-                                  >
-                                    {row.name}
+                            {socialUsersList.items.map((row) => {
+                              const rowFollowing =
+                                followedRows[row.name] ??
+                                Boolean(row.is_following || row.isCurrentFollowing);
+                              return (
+                                <li key={row.name} className="flex items-center gap-3 py-3">
+                                  <Link href={`/@${encodeURIComponent(row.name)}`} className="shrink-0">
+                                    {row.avatarUrl ? (
+                                      <img
+                                        src={row.avatarUrl}
+                                        alt={row.name}
+                                        className="h-11 w-11 rounded-full border border-[#e9e7e7] object-cover"
+                                      />
+                                    ) : (
+                                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#af3d36] text-sm font-bold text-white">
+                                        {row.name[0]?.toUpperCase() || 'U'}
+                                      </div>
+                                    )}
                                   </Link>
-                                  <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[12px] text-[#99aab5]">
-                                    <span className="rounded border border-[#e9e7e7] bg-[#f5f6f7] px-2 py-0.5 font-mono text-[13px] text-[#333333]">
-                                      {(row.wobjectsWeight ?? 0).toFixed(2)}
-                                    </span>
-                                    <span>·</span>
-                                    <span>{row.usersFollowingCount ?? 0}</span>
-                                  </p>
-                                </div>
-                                <Link
-                                  href={`/@${encodeURIComponent(row.name)}`}
-                                  className="shrink-0 rounded-[24px] border border-[#af3d36] px-3 py-1.5 text-[14px] font-medium text-[#af3d36] hover:bg-[#af3d36]/10"
-                                >
-                                  Follow
-                                </Link>
-                              </li>
-                            ))}
+                                  <div className="min-w-0 flex-1">
+                                    <Link
+                                      href={`/@${encodeURIComponent(row.name)}`}
+                                      className="font-medium text-[#333333] hover:underline"
+                                    >
+                                      {row.name}
+                                    </Link>
+                                    <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[12px] text-[#99aab5]">
+                                      <span className="rounded border border-[#e9e7e7] bg-[#f5f6f7] px-2 py-0.5 font-mono text-[13px] text-[#333333]">
+                                        {(row.wobjectsWeight ?? 0).toFixed(2)}
+                                      </span>
+                                      <span>·</span>
+                                      <span>{row.usersFollowingCount ?? 0}</span>
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleRowFollowToggle(row.name, rowFollowing)}
+                                    className={[
+                                      'shrink-0 cursor-pointer rounded-[24px] border px-3 py-1.5 text-[14px] font-medium transition-colors',
+                                      rowFollowing
+                                        ? 'border-[#e9e7e7] bg-white text-[#333333] hover:border-[#d9534f] hover:text-[#d9534f]'
+                                        : 'border-[#af3d36] text-[#af3d36] hover:bg-[#af3d36]/10',
+                                    ].join(' ')}
+                                  >
+                                    {rowFollowing ? 'Following' : 'Follow'}
+                                  </button>
+                                </li>
+                              );
+                            })}
                           </ul>
                         )}
                       </section>
@@ -2928,6 +3407,11 @@ export function UserProfileViewer({
           )}
         </div>
       </div>
+
+      <WalletActionModal
+        action={walletModalAction}
+        onClose={() => setWalletModalAction(null)}
+      />
     </div>
   );
 }

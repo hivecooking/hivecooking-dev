@@ -1,6 +1,7 @@
 import {
   discoverObjectsResponseSchema,
   engineWalletResponseSchema,
+  objectUpdatesResponseSchema,
   paginatedFeedPostsSchema,
   paginatedUserFollowListSchema,
   resolveNestedResponseSchema,
@@ -22,6 +23,7 @@ import {
   walletHistoryResponseSchema,
   type DiscoverObjectsResponse,
   type EngineWalletResponse,
+  type ObjectUpdatesResponse,
   type PaginatedFeedPosts,
   type PaginatedUserFollowList,
   type UserAccountSidebar,
@@ -538,6 +540,50 @@ export async function fetchObjectPosts(
       body: {
         limit: body.limit ?? 15,
         cursor: body.cursor,
+        currency: body.currency ?? 'USD',
+      },
+      signal,
+    },
+  );
+}
+
+export async function fetchObjectUpdates(
+  objectId: string,
+  body: { limit?: number; cursor?: string; update_types?: string[]; include_rejected?: boolean } = {},
+  signal?: AbortSignal,
+) {
+  const encoded = encodeURIComponent(objectId);
+  return queryApiFetch<ObjectUpdatesResponse>(
+    `/objects/${encoded}/updates`,
+    objectUpdatesResponseSchema,
+    {
+      method: 'POST',
+      body: {
+        limit: body.limit ?? 30,
+        cursor: body.cursor,
+        update_types: body.update_types,
+        include_rejected: body.include_rejected ?? true,
+      },
+      signal,
+    },
+  );
+}
+
+export async function fetchObjectThreads(
+  objectId: string,
+  body: { limit?: number; cursor?: string; sort?: string; currency?: string } = {},
+  signal?: AbortSignal,
+) {
+  const encoded = encodeURIComponent(objectId);
+  return queryApiFetch<PaginatedFeedPosts>(
+    `/objects/${encoded}/threads`,
+    paginatedFeedPostsSchema,
+    {
+      method: 'POST',
+      body: {
+        limit: body.limit ?? 20,
+        cursor: body.cursor,
+        sort: body.sort ?? 'latest',
         currency: body.currency ?? 'USD',
       },
       signal,
