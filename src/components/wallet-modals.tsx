@@ -1,10 +1,31 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { openLoginModal } from '@/components/post-interactions';
 import {
+  fetchEngineDepositAddress,
+  fetchEngineDepositList,
+  fetchEngineSwapList,
+  fetchEngineSwapQuote,
+  fetchEngineTokenDelegations,
+  fetchEngineWithdrawList,
+  fetchEngineWithdrawQuote,
+  fetchHiveHpDelegations,
+  fetchHiveRcDelegations,
+  type EngineDepositAddressResponse,
+  type EngineDepositListResponse,
+  type EngineSwapListResponse,
+  type EngineTokenDelegationsResponse,
+  type EngineWithdrawListResponse,
+  type HiveHpDelegationsResponse,
+  type HiveRcDelegationsResponse,
+} from '@/modules/query-api';
+import {
   buildAccountUpdate2Op,
+  buildCustomJsonOp,
   buildDelegateRcOp,
   buildDelegateVestingSharesOp,
   buildHiveEngineTokensOp,
@@ -17,6 +38,342 @@ import {
   useWallet,
   type HiveOperation,
 } from '@/modules/wallet';
+import { isOk } from '@/shared/domain/result';
+
+// ============================================================================
+// 1. WalletActionSplit (Exact parity with Waiviogit/open-infrastructure)
+// ============================================================================
+
+export type WalletActionSplitItem = {
+  id?: string;
+  label: string;
+  onSelect: () => void;
+};
+
+export function WalletActionSplit({
+  primaryLabel,
+  onPrimary,
+  menuItems = [],
+  menuAriaLabel,
+  disabled = false,
+}: {
+  primaryLabel: string;
+  onPrimary: () => void;
+  menuItems?: WalletActionSplitItem[];
+  menuAriaLabel?: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; right: number; minWidth: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef.current) {
+      setPos(null);
+      return;
+    }
+    const rect = anchorRef.current.getBoundingClientRect();
+    setPos({
+      top: rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+      minWidth: Math.max(160, rect.width),
+    });
+  }, [open, menuItems.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  const hasMenu = menuItems.length > 0;
+
+  return (
+    <div ref={rootRef} className="relative inline-flex shrink-0">
+      <div
+        ref={anchorRef}
+        className="inline-flex overflow-hidden rounded-[24px] border border-[#af3d36] bg-white"
+      >
+        <button
+          type="button"
+          onClick={onPrimary}
+          disabled={disabled}
+          className="cursor-pointer px-3 py-1 text-[13px] font-medium text-[#af3d36] hover:bg-[#af3d36]/10 disabled:opacity-50"
+        >
+          {primaryLabel}
+        </button>
+        {hasMenu ? (
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-haspopup="menu"
+            disabled={disabled}
+            onClick={() => setOpen((v) => !v)}
+            className="cursor-pointer border-l border-[#af3d36] px-2 py-1 text-[#af3d36] hover:bg-[#af3d36]/10 disabled:opacity-50"
+          >
+            <span className="sr-only">{menuAriaLabel || `${primaryLabel} menu`}</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+        ) : null}
+      </div>
+      {open && hasMenu && pos && mounted
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              style={{
+                position: 'fixed',
+                top: pos.top,
+                right: pos.right,
+                minWidth: pos.minWidth,
+                zIndex: 100,
+              }}
+              className="rounded-[12px] border border-[#e9e7e7] bg-white py-1 shadow-lg"
+            >
+              {menuItems.map((item) => (
+                <button
+                  key={item.id || item.label}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    item.onSelect();
+                  }}
+                  className="block w-full cursor-pointer px-3.5 py-2 text-left text-[13px] text-[#333333] hover:bg-[#f5f6f7] hover:text-[#af3d36]"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
+// ============================================================================
+// 2. Wallet Right Sidebar Cards (Waiviogit/open-infrastructure parity)
+//    Strictly gated on `canManage` (`viewerUsername === accountName`)
+// ============================================================================
+
+export function WalletActionsSidebarTop({
+  canManage,
+  walletType,
+  onOpenAction,
+}: {
+  canManage: boolean;
+  walletType: 'WAIV' | 'HIVE' | 'ENGINE';
+  onOpenAction: (action: WalletModalAction) => void;
+}) {
+  if (!canManage) return null;
+
+  const defaultSymbol = walletType === 'HIVE' ? 'HIVE' : 'WAIV';
+  const isEngine = walletType !== 'HIVE';
+
+  return (
+    <div className="space-y-2 rounded-[8px] border border-[#e9e7e7] bg-white/60 p-4">
+      <button
+        type="button"
+        onClick={() =>
+          onOpenAction({
+            kind: 'TRANSFER',
+            symbol: defaultSymbol,
+            precision: defaultSymbol === 'WAIV' ? 8 : 3,
+            isEngine,
+          })
+        }
+        className="flex w-full cursor-pointer items-center justify-center rounded-[24px] bg-[#af3d36] px-4 py-2 text-center text-[15px] font-semibold text-white hover:bg-[#93312b]"
+      >
+        Transfer
+      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() =>
+            onOpenAction({
+              kind: 'POWER_UP',
+              symbol: defaultSymbol,
+              precision: defaultSymbol === 'WAIV' ? 8 : 3,
+              isEngine,
+            })
+          }
+          className="flex w-full cursor-pointer items-center justify-center rounded-[24px] border border-[#e9e7e7] bg-[#f5f6f7] px-3 py-2 text-center text-[14px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+        >
+          Power up
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onOpenAction({
+              kind: 'POWER_DOWN',
+              symbol: defaultSymbol === 'HIVE' ? 'HP' : 'WAIV',
+              precision: defaultSymbol === 'WAIV' ? 8 : 3,
+              isEngine,
+            })
+          }
+          className="flex w-full cursor-pointer items-center justify-center rounded-[24px] border border-[#e9e7e7] bg-[#f5f6f7] px-3 py-2 text-center text-[14px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+        >
+          Power down
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={() =>
+          onOpenAction({
+            kind: 'MANAGE_DELEGATIONS',
+            account: '',
+            initialAsset: walletType === 'HIVE' ? 'HP' : 'WAIV',
+          })
+        }
+        className="flex w-full cursor-pointer items-center justify-center rounded-[24px] border border-[#e9e7e7] bg-[#f5f6f7] px-4 py-2 text-center text-[14px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+      >
+        Manage delegations
+      </button>
+    </div>
+  );
+}
+
+export function WalletActionsSidebarBottom({
+  canManage,
+  walletType,
+  onOpenAction,
+}: {
+  canManage: boolean;
+  walletType: 'WAIV' | 'HIVE' | 'ENGINE';
+  onOpenAction: (action: WalletModalAction) => void;
+}) {
+  if (!canManage) return null;
+  if (walletType !== 'WAIV' && walletType !== 'ENGINE') return null;
+
+  return (
+    <div className="space-y-2 rounded-[8px] border border-[#e9e7e7] bg-white/60 p-4">
+      <button
+        type="button"
+        onClick={() => onOpenAction({ kind: 'SWAP', fromSymbol: 'SWAP.HIVE', toSymbol: 'WAIV' })}
+        className="flex w-full cursor-pointer items-center justify-center rounded-[24px] bg-[#af3d36] px-4 py-2 text-center text-[15px] font-semibold text-white hover:bg-[#93312b]"
+      >
+        Swap tokens
+      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => onOpenAction({ kind: 'DEPOSIT', initialSymbol: 'HIVE' })}
+          className="flex w-full cursor-pointer items-center justify-center rounded-[24px] border border-[#e9e7e7] bg-[#f5f6f7] px-3 py-2 text-center text-[14px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+        >
+          Deposit
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onOpenAction({
+              kind: 'WITHDRAW',
+              inputSymbol: 'WAIV',
+              outputSymbol: 'HIVE',
+            })
+          }
+          className="flex w-full cursor-pointer items-center justify-center rounded-[24px] border border-[#e9e7e7] bg-[#f5f6f7] px-3 py-2 text-center text-[14px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
+        >
+          Withdraw
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function ClaimRewardsSidebarCard({
+  canManage,
+  pendingRewards,
+  claiming,
+  onClaim,
+}: {
+  canManage: boolean;
+  pendingRewards?: {
+    rewardHive?: string;
+    rewardHbd?: string;
+    rewardVests?: string;
+    hive?: string;
+    hbd?: string;
+    hp?: string;
+  } | null;
+  claiming?: boolean;
+  onClaim: (rewards: { hive: string; hbd: string; vests: string }) => void;
+}) {
+  if (!canManage || !pendingRewards) return null;
+
+  const rHive = String(pendingRewards.rewardHive ?? pendingRewards.hive ?? '0.000 HIVE');
+  const rHbd = String(pendingRewards.rewardHbd ?? pendingRewards.hbd ?? '0.000 HBD');
+  const rVests = String(pendingRewards.rewardVests ?? '0.000000 VESTS');
+  const rHp = String(pendingRewards.hp ?? '');
+
+  const showHive = parseFloat(rHive) > 0;
+  const showHbd = parseFloat(rHbd) > 0;
+  const showVests = parseFloat(rVests) > 0 || parseFloat(rHp) > 0;
+
+  if (!showHive && !showHbd && !showVests) return null;
+
+  return (
+    <div className="space-y-2 rounded-[8px] border border-[#e9e7e7] bg-white/60 p-4">
+      <h3 className="text-[16px] font-semibold text-[#333333]">Rewards</h3>
+      <div className="divide-y divide-[#e9e7e7] border-t border-[#e9e7e7]">
+        {showHive ? (
+          <div className="flex items-center justify-between gap-3 py-2 text-[13px]">
+            <span className="font-semibold text-[#333333]">HIVE</span>
+            <span className="font-mono font-semibold text-[#333333]">{rHive}</span>
+          </div>
+        ) : null}
+        {showHbd ? (
+          <div className="flex items-center justify-between gap-3 py-2 text-[13px]">
+            <span className="font-semibold text-[#333333]">HBD</span>
+            <span className="font-mono font-semibold text-[#333333]">{rHbd}</span>
+          </div>
+        ) : null}
+        {showVests ? (
+          <div className="flex items-center justify-between gap-3 py-2 text-[13px]">
+            <span className="font-semibold text-[#333333]">HIVE Power</span>
+            <span className="font-mono font-semibold text-[#333333]">
+              {rHp ? `${rHp} HP` : rVests}
+            </span>
+          </div>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        disabled={claiming}
+        onClick={() => onClaim({ hive: rHive, hbd: rHbd, vests: rVests })}
+        className="flex w-full cursor-pointer items-center justify-center rounded-[24px] bg-[#af3d36] px-4 py-2 text-center text-[14px] font-semibold text-white hover:bg-[#93312b] disabled:opacity-50"
+      >
+        {claiming ? 'Claiming...' : 'Claim rewards'}
+      </button>
+    </div>
+  );
+}
+
+// ============================================================================
+// 3. Unified WalletActionModal (Transfer, Power Up/Down, Delegate,
+//    Manage Delegations, Delegations List, Swap, Deposit, Withdraw, Profile)
+// ============================================================================
 
 export type WalletModalAction =
   | {
@@ -27,6 +384,7 @@ export type WalletModalAction =
       isEngine?: boolean;
       savingsMode?: 'NONE' | 'DEPOSIT' | 'WITHDRAW';
       defaultTo?: string;
+      defaultMemo?: string;
     }
   | {
       kind: 'POWER_UP';
@@ -53,6 +411,35 @@ export type WalletModalAction =
       totalVestingShares?: string;
       totalVestingFundSteem?: string;
       defaultTo?: string;
+    }
+  | {
+      kind: 'MANAGE_DELEGATIONS';
+      account?: string;
+      initialAsset?: 'WAIV' | 'HP' | 'RC';
+      initialTab?: 'WAIV' | 'HP' | 'RC';
+      totalVestingShares?: string;
+      totalVestingFundSteem?: string;
+    }
+  | {
+      kind: 'DELEGATIONS_LIST';
+      account: string;
+      variant: 'waiv' | 'hiveHp' | 'hiveRc';
+    }
+  | {
+      kind: 'SWAP';
+      fromSymbol?: string;
+      toSymbol?: string;
+      initialFromSymbol?: string;
+      initialToSymbol?: string;
+    }
+  | {
+      kind: 'DEPOSIT';
+      initialSymbol?: string;
+    }
+  | {
+      kind: 'WITHDRAW';
+      inputSymbol?: string;
+      outputSymbol?: string;
     }
   | {
       kind: 'EDIT_PROFILE';
@@ -84,10 +471,12 @@ export function WalletActionModal({
   action,
   onClose,
   onSuccess,
+  onSwitchAction,
 }: {
   action: WalletModalAction | null;
   onClose: () => void;
   onSuccess?: () => void;
+  onSwitchAction?: (next: WalletModalAction) => void;
 }) {
   const { username, broadcast } = useWallet();
   const isAuthenticated = Boolean(username);
@@ -104,6 +493,42 @@ export function WalletActionModal({
   const [profWebsite, setProfWebsite] = useState('');
   const [profAvatar, setProfAvatar] = useState('');
   const [profCover, setProfCover] = useState('');
+
+  // Delegations List / Manage Delegations state
+  const [delLoading, setDelLoading] = useState(false);
+  const [delTab, setDelTab] = useState<'received' | 'delegated'>('received');
+  const [manageAsset, setManageAsset] = useState<'WAIV' | 'HP' | 'RC'>('WAIV');
+  const [hpDelData, setHpDelData] = useState<HiveHpDelegationsResponse | null>(null);
+  const [rcDelData, setRcDelData] = useState<HiveRcDelegationsResponse | null>(null);
+  const [waivDelData, setWaivDelData] = useState<EngineTokenDelegationsResponse | null>(null);
+
+  // Swap state
+  const [swapList, setSwapList] = useState<EngineSwapListResponse['tokens']>([]);
+  const [swapLoading, setSwapLoading] = useState(false);
+  const [swapFrom, setSwapFrom] = useState('SWAP.HIVE');
+  const [swapTo, setSwapTo] = useState('WAIV');
+  const [swapAmountIn, setSwapAmountIn] = useState('');
+  const [swapAmountOut, setSwapAmountOut] = useState('');
+  const [swapImpact, setSwapImpact] = useState('0');
+  const [swapCustomJson, setSwapCustomJson] = useState<Record<string, unknown>[]>([]);
+  const [swapQuoteLoading, setSwapQuoteLoading] = useState(false);
+
+  // Deposit state
+  const [depositList, setDepositList] = useState<EngineDepositListResponse['tokens']>([]);
+  const [depositSymbol, setDepositSymbol] = useState('HIVE');
+  const [depositInfo, setDepositInfo] = useState<EngineDepositAddressResponse | null>(null);
+  const [depositLoading, setDepositLoading] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Withdraw state
+  const [withdrawList, setWithdrawList] = useState<EngineWithdrawListResponse['tokens']>([]);
+  const [withdrawInputSym, setWithdrawInputSym] = useState('WAIV');
+  const [withdrawOutputSym, setWithdrawOutputSym] = useState('HIVE');
+  const [withdrawQty, setWithdrawQty] = useState('');
+  const [withdrawAddress, setWithdrawAddress] = useState('');
+  const [withdrawReceive, setWithdrawReceive] = useState<number | null>(null);
+  const [withdrawCustomJson, setWithdrawCustomJson] = useState<Record<string, unknown>[]>([]);
+  const [withdrawLoading, setWithdrawLoading] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,6 +548,7 @@ export function WalletActionModal({
         action.defaultTo ??
           (action.savingsMode && action.savingsMode !== 'NONE' ? username || '' : ''),
       );
+      setMemoInput(action.defaultMemo ?? '');
     } else if (action.kind === 'POWER_UP') {
       setToAccount(username || '');
     } else if (action.kind === 'DELEGATE') {
@@ -134,8 +560,212 @@ export function WalletActionModal({
       setProfWebsite(action.initialProfile.website || '');
       setProfAvatar(action.initialProfile.avatarUrl || '');
       setProfCover(action.initialProfile.coverImageUrl || '');
+    } else if (action.kind === 'MANAGE_DELEGATIONS') {
+      setManageAsset(action.initialAsset || action.initialTab || 'WAIV');
+    } else if (action.kind === 'DELEGATIONS_LIST') {
+      setDelTab('received');
+    } else if (action.kind === 'SWAP') {
+      setSwapFrom(action.fromSymbol || action.initialFromSymbol || 'SWAP.HIVE');
+      setSwapTo(action.toSymbol || action.initialToSymbol || 'WAIV');
+      setSwapAmountIn('');
+      setSwapAmountOut('');
+      setSwapCustomJson([]);
+    } else if (action.kind === 'DEPOSIT') {
+      setDepositSymbol(action.initialSymbol || 'HIVE');
+    } else if (action.kind === 'WITHDRAW') {
+      setWithdrawInputSym(action.inputSymbol || 'WAIV');
+      setWithdrawOutputSym(action.outputSymbol || 'HIVE');
+      setWithdrawQty('');
+      setWithdrawAddress('');
+      setWithdrawReceive(null);
+      setWithdrawCustomJson([]);
     }
   }, [action, username]);
+
+  // Load Delegations when DELEGATIONS_LIST or MANAGE_DELEGATIONS is open
+  useEffect(() => {
+    if (!action) return;
+    if (action.kind !== 'DELEGATIONS_LIST' && action.kind !== 'MANAGE_DELEGATIONS') return;
+    const targetAccount =
+      action.kind === 'DELEGATIONS_LIST' ? action.account : action.account || username || '';
+    if (!targetAccount) return;
+
+    let cancelled = false;
+    setDelLoading(true);
+    setError(null);
+
+    async function loadDel() {
+      const variant =
+        action?.kind === 'DELEGATIONS_LIST'
+          ? action.variant
+          : manageAsset === 'HP'
+            ? 'hiveHp'
+            : manageAsset === 'RC'
+              ? 'hiveRc'
+              : 'waiv';
+
+      if (variant === 'waiv') {
+        const res = await fetchEngineTokenDelegations(targetAccount, 'WAIV');
+        if (!cancelled) {
+          setWaivDelData(isOk(res) ? res.value : null);
+          setDelLoading(false);
+        }
+      } else if (variant === 'hiveRc') {
+        const res = await fetchHiveRcDelegations(targetAccount);
+        if (!cancelled) {
+          setRcDelData(isOk(res) ? res.value : null);
+          setDelLoading(false);
+        }
+      } else {
+        const res = await fetchHiveHpDelegations(targetAccount);
+        if (!cancelled) {
+          setHpDelData(isOk(res) ? res.value : null);
+          setDelLoading(false);
+        }
+      }
+    }
+
+    void loadDel();
+    return () => {
+      cancelled = true;
+    };
+  }, [action, manageAsset, username]);
+
+  // Load Swap list when SWAP is open
+  useEffect(() => {
+    if (!action || action.kind !== 'SWAP' || !username) return;
+    let cancelled = false;
+    setSwapLoading(true);
+    void fetchEngineSwapList(username).then((res) => {
+      if (cancelled) return;
+      setSwapLoading(false);
+      if (isOk(res)) {
+        setSwapList(res.value.tokens);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [action, username]);
+
+  // Fetch Swap quote when amount/symbols change
+  useEffect(() => {
+    if (!action || action.kind !== 'SWAP' || !username) return;
+    const amt = parseFloat(swapAmountIn);
+    if (!Number.isFinite(amt) || amt <= 0 || !swapFrom || !swapTo || swapFrom === swapTo) {
+      setSwapAmountOut('');
+      setSwapCustomJson([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setSwapQuoteLoading(true);
+      void fetchEngineSwapQuote(username, {
+        fromSymbol: swapFrom,
+        toSymbol: swapTo,
+        amountIn: swapAmountIn,
+        direction: 'exactInput',
+      }).then((res) => {
+        if (cancelled) return;
+        setSwapQuoteLoading(false);
+        if (isOk(res)) {
+          setSwapAmountOut(res.value.amountOut);
+          setSwapImpact(res.value.priceImpact);
+          setSwapCustomJson(res.value.customJson);
+          setError(null);
+        } else {
+          setSwapAmountOut('');
+          setSwapCustomJson([]);
+          setError('No swap liquidity pool quote available for this pair.');
+        }
+      });
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [action, swapAmountIn, swapFrom, swapTo, username]);
+
+  // Load Deposit list & address when DEPOSIT is open
+  useEffect(() => {
+    if (!action || action.kind !== 'DEPOSIT' || !username) return;
+    let cancelled = false;
+    setDepositLoading(true);
+    void Promise.all([
+      fetchEngineDepositList(username),
+      fetchEngineDepositAddress(username, depositSymbol),
+    ]).then(([listRes, addrRes]) => {
+      if (cancelled) return;
+      setDepositLoading(false);
+      if (isOk(listRes)) setDepositList(listRes.value.tokens);
+      if (isOk(addrRes)) setDepositInfo(addrRes.value);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [action, depositSymbol, username]);
+
+  // Load Withdraw list when WITHDRAW is open
+  useEffect(() => {
+    if (!action || action.kind !== 'WITHDRAW' || !username) return;
+    let cancelled = false;
+    setWithdrawLoading(true);
+    void fetchEngineWithdrawList(username).then((res) => {
+      if (cancelled) return;
+      setWithdrawLoading(false);
+      if (isOk(res)) {
+        setWithdrawList(res.value.tokens);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [action, username]);
+
+  // Fetch Withdraw quote when quantity/pair changes
+  useEffect(() => {
+    if (!action || action.kind !== 'WITHDRAW' || !username) return;
+    const qty = parseFloat(withdrawQty);
+    if (!Number.isFinite(qty) || qty <= 0 || !withdrawInputSym || !withdrawOutputSym) {
+      setWithdrawReceive(null);
+      setWithdrawCustomJson([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void fetchEngineWithdrawQuote(username, {
+        inputSymbol: withdrawInputSym,
+        outputSymbol: withdrawOutputSym,
+        quantity: withdrawQty,
+        address: withdrawAddress.trim() || username,
+        previewOnly: !withdrawAddress.trim() && withdrawOutputSym !== 'HIVE' && withdrawOutputSym !== 'HBD',
+      }).then((res) => {
+        if (cancelled) return;
+        if (isOk(res)) {
+          setWithdrawReceive(res.value.predictiveAmount);
+          setWithdrawCustomJson(res.value.customJsonPayload);
+          if (res.value.error) setError(res.value.error);
+          else setError(null);
+        }
+      });
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [action, username, withdrawAddress, withdrawInputSym, withdrawOutputSym, withdrawQty]);
+
+  const copyText = useCallback(async (label: string, val: string | null | undefined) => {
+    if (!val) return;
+    await navigator.clipboard.writeText(val);
+    setCopiedField(label);
+    setTimeout(() => setCopiedField(null), 1800);
+  }, []);
+
+  const selectedSwapFromToken = useMemo(
+    () => swapList.find((t) => t.symbol === swapFrom) ?? null,
+    [swapFrom, swapList],
+  );
 
   if (!action) return null;
 
@@ -147,7 +777,10 @@ export function WalletActionModal({
         : 0;
 
   const precision =
-    action.kind !== 'EDIT_PROFILE'
+    action.kind === 'TRANSFER' ||
+    action.kind === 'POWER_UP' ||
+    action.kind === 'POWER_DOWN' ||
+    action.kind === 'DELEGATE'
       ? action.precision ?? (action.symbol === 'WAIV' ? 8 : 3)
       : 3;
 
@@ -190,7 +823,40 @@ export function WalletActionModal({
             posting_json_metadata: metadata,
           }),
         ];
-      } else {
+      } else if (action.kind === 'SWAP') {
+        if (swapCustomJson.length === 0) {
+          throw new Error('Please enter a valid swap amount and wait for the pool quote.');
+        }
+        ops = [
+          buildCustomJsonOp({
+            required_auths: [username],
+            required_posting_auths: [],
+            id: 'ssc-mainnet-hive',
+            json: JSON.stringify(
+              swapCustomJson.length === 1 ? swapCustomJson[0] : swapCustomJson,
+            ),
+          }),
+        ];
+      } else if (action.kind === 'WITHDRAW') {
+        if (withdrawCustomJson.length === 0) {
+          throw new Error('Please enter a valid withdrawal quantity and destination.');
+        }
+        ops = [
+          buildCustomJsonOp({
+            required_auths: [username],
+            required_posting_auths: [],
+            id: 'ssc-mainnet-hive',
+            json: JSON.stringify(
+              withdrawCustomJson.length === 1 ? withdrawCustomJson[0] : withdrawCustomJson,
+            ),
+          }),
+        ];
+      } else if (
+        action.kind === 'TRANSFER' ||
+        action.kind === 'POWER_UP' ||
+        action.kind === 'POWER_DOWN' ||
+        action.kind === 'DELEGATE'
+      ) {
         const num = parseFloat(amountInput);
         const cleanTo = toAccount.trim().toLowerCase().replace(/^@/, '');
 
@@ -357,20 +1023,412 @@ export function WalletActionModal({
     }
   };
 
+  // --- Read-Only Delegations List Modal (`WalletDelegationsListModal` parity) ---
+  if (action.kind === 'DELEGATIONS_LIST') {
+    const title =
+      action.variant === 'waiv'
+        ? 'WAIV Power Delegations'
+        : action.variant === 'hiveRc'
+          ? 'Resource Credits Delegations'
+          : 'HIVE Power Delegations';
+    const unit = action.variant === 'waiv' ? 'WP' : action.variant === 'hiveRc' ? 'b RC' : 'HP';
+
+    const receivedRows =
+      action.variant === 'waiv'
+        ? (waivDelData?.incoming ?? []).map((r) => ({ user: r.from, qty: r.quantity }))
+        : action.variant === 'hiveRc'
+          ? (rcDelData?.incoming ?? []).map((r) => ({
+              user: r.from,
+              qty: (Number(r.delegatedRc) / 1e9).toFixed(2),
+            }))
+          : (hpDelData?.incoming ?? []).map((r) => ({ user: r.delegator, qty: r.hp }));
+
+    const delegatedRows =
+      action.variant === 'waiv'
+        ? (waivDelData?.outgoing ?? []).map((r) => ({ user: r.to, qty: r.quantity }))
+        : action.variant === 'hiveRc'
+          ? (rcDelData?.outgoing ?? []).map((r) => ({
+              user: r.to,
+              qty: (Number(r.delegatedRc) / 1e9).toFixed(2),
+            }))
+          : (hpDelData?.outgoing ?? []).map((r) => ({ user: r.delegatee, qty: r.hp }));
+
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        onClick={onClose}
+      >
+        <div
+          className="flex max-h-[80dvh] w-full max-w-[480px] flex-col rounded-[8px] border border-[#e9e7e7] bg-white p-5 shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-3 flex items-center justify-between border-b border-[#e9e7e7] pb-3">
+            <h3 className="text-[17px] font-bold text-[#333333]">
+              {title} (@{action.account})
+            </h3>
+            <button
+              type="button"
+              onClick={onClose}
+              className="cursor-pointer text-[18px] text-[#99aab5] hover:text-[#333333]"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="mb-3 flex gap-6 border-b border-[#e9e7e7]">
+            <button
+              type="button"
+              onClick={() => setDelTab('received')}
+              className={`cursor-pointer border-b-2 pb-2 text-[14px] font-medium ${
+                delTab === 'received'
+                  ? 'border-[#af3d36] text-[#af3d36]'
+                  : 'border-transparent text-[#99aab5] hover:text-[#333333]'
+              }`}
+            >
+              Received ({receivedRows.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDelTab('delegated')}
+              className={`cursor-pointer border-b-2 pb-2 text-[14px] font-medium ${
+                delTab === 'delegated'
+                  ? 'border-[#af3d36] text-[#af3d36]'
+                  : 'border-transparent text-[#99aab5] hover:text-[#333333]'
+              }`}
+            >
+              Delegated ({delegatedRows.length})
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {delLoading ? (
+              <p className="py-6 text-center text-[14px] text-[#99aab5]">Loading delegations...</p>
+            ) : (delTab === 'received' ? receivedRows : delegatedRows).length === 0 ? (
+              <p className="py-6 text-center text-[14px] text-[#99aab5]">No delegations found.</p>
+            ) : (
+              <ul className="divide-y divide-[#e9e7e7]">
+                {(delTab === 'received' ? receivedRows : delegatedRows).map((row) => (
+                  <li key={row.user} className="flex items-center justify-between py-2.5">
+                    <Link
+                      href={`/@${encodeURIComponent(row.user)}`}
+                      onClick={onClose}
+                      className="flex items-center gap-2.5 font-medium text-[#333333] hover:text-[#af3d36]"
+                    >
+                      <img
+                        src={`https://images.hive.blog/u/${row.user}/avatar/small`}
+                        alt={row.user}
+                        className="h-8 w-8 rounded-full border border-[#e9e7e7] object-cover"
+                      />
+                      <span>@{row.user}</span>
+                    </Link>
+                    <span className="font-mono text-[14px] font-semibold text-[#333333]">
+                      {row.qty} {unit}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="mt-4 w-full cursor-pointer rounded-[24px] border border-[#e9e7e7] py-2 text-[14px] font-medium text-[#333333] hover:bg-[#f5f6f7]"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Manage Delegations Modal (`WalletManageDelegationsModal` parity) ---
+  if (action.kind === 'MANAGE_DELEGATIONS') {
+    const unit = manageAsset === 'WAIV' ? 'WP' : manageAsset === 'RC' ? 'b RC' : 'HP';
+    const outgoingRows =
+      manageAsset === 'WAIV'
+        ? (waivDelData?.outgoing ?? []).map((r) => ({ user: r.to, qty: r.quantity }))
+        : manageAsset === 'RC'
+          ? (rcDelData?.outgoing ?? []).map((r) => ({
+              user: r.to,
+              qty: (Number(r.delegatedRc) / 1e9).toFixed(2),
+            }))
+          : (hpDelData?.outgoing ?? []).map((r) => ({ user: r.delegatee, qty: r.hp }));
+
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        onClick={onClose}
+      >
+        <div
+          className="flex max-h-[82dvh] w-full max-w-[480px] flex-col rounded-[8px] border border-[#e9e7e7] bg-white p-5 shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-3 flex items-center justify-between border-b border-[#e9e7e7] pb-3">
+            <h3 className="text-[17px] font-bold text-[#333333]">Manage delegations</h3>
+            <button
+              type="button"
+              onClick={onClose}
+              className="cursor-pointer text-[18px] text-[#99aab5] hover:text-[#333333]"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <select
+              value={manageAsset}
+              onChange={(e) => setManageAsset(e.target.value as 'WAIV' | 'HP' | 'RC')}
+              className="flex-1 rounded-[24px] border border-[#e9e7e7] bg-[#fafafa] px-3.5 py-2 text-[14px] font-medium text-[#333333] outline-none focus:border-[#af3d36]"
+            >
+              <option value="WAIV">WAIV Power (WP)</option>
+              <option value="HP">HIVE Power (HP)</option>
+              <option value="RC">Resource Credits (RC)</option>
+            </select>
+            <button
+              type="button"
+              onClick={() =>
+                onSwitchAction?.({
+                  kind: 'DELEGATE',
+                  symbol: manageAsset,
+                  precision: manageAsset === 'WAIV' ? 8 : 3,
+                  isEngine: manageAsset === 'WAIV',
+                  totalVestingShares: action.totalVestingShares,
+                  totalVestingFundSteem: action.totalVestingFundSteem,
+                })
+              }
+              className="cursor-pointer rounded-[24px] bg-[#af3d36] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#93312b]"
+            >
+              + New Delegation
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {delLoading ? (
+              <p className="py-6 text-center text-[14px] text-[#99aab5]">Loading outgoing delegations...</p>
+            ) : outgoingRows.length === 0 ? (
+              <p className="py-6 text-center text-[14px] text-[#99aab5]">
+                No active outgoing {unit} delegations.
+              </p>
+            ) : (
+              <ul className="divide-y divide-[#e9e7e7]">
+                {outgoingRows.map((row) => (
+                  <li key={row.user} className="flex items-center justify-between gap-2 py-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <img
+                        src={`https://images.hive.blog/u/${row.user}/avatar/small`}
+                        alt={row.user}
+                        className="h-8 w-8 rounded-full border border-[#e9e7e7] object-cover"
+                      />
+                      <div>
+                        <p className="text-[14px] font-medium text-[#333333]">@{row.user}</p>
+                        <p className="font-mono text-[12px] text-[#99aab5]">
+                          {row.qty} {unit}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onSwitchAction?.({
+                          kind: 'DELEGATE',
+                          symbol: manageAsset,
+                          precision: manageAsset === 'WAIV' ? 8 : 3,
+                          isEngine: manageAsset === 'WAIV',
+                          defaultTo: row.user,
+                          totalVestingShares: action.totalVestingShares,
+                          totalVestingFundSteem: action.totalVestingFundSteem,
+                        })
+                      }
+                      className="cursor-pointer rounded-[24px] border border-[#af3d36] px-3 py-1 text-[12px] font-medium text-[#af3d36] hover:bg-[#af3d36]/10"
+                    >
+                      Edit
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="mt-4 w-full cursor-pointer rounded-[24px] border border-[#e9e7e7] py-2 text-[14px] font-medium text-[#333333] hover:bg-[#f5f6f7]"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Deposit Modal (`WalletDepositModal` parity) ---
+  if (action.kind === 'DEPOSIT') {
+    const swapSymbol =
+      depositList.find((t) => t.symbol === depositSymbol)?.swapSymbol ?? `SWAP.${depositSymbol}`;
+    const isHiveOrHbd = depositSymbol === 'HIVE' || depositSymbol === 'HBD';
+
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        onClick={onClose}
+      >
+        <div
+          className="w-full max-w-[460px] rounded-[8px] border border-[#e9e7e7] bg-white p-5 shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-4 flex items-center justify-between border-b border-[#e9e7e7] pb-3">
+            <h3 className="text-[17px] font-bold text-[#333333]">Deposit to Hive Engine</h3>
+            <button
+              type="button"
+              onClick={onClose}
+              className="cursor-pointer text-[18px] text-[#99aab5] hover:text-[#333333]"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1 block text-[12px] font-bold text-[#595959]">Select Token</label>
+              <select
+                value={depositSymbol}
+                onChange={(e) => setDepositSymbol(e.target.value)}
+                className="w-full rounded-[8px] border border-[#d9d9d9] bg-[#fafafa] px-3 py-2 text-[14px] font-medium text-[#333333] outline-none focus:border-[#af3d36]"
+              >
+                {(depositList.length > 0
+                  ? depositList
+                  : [
+                      { symbol: 'HIVE', displayName: 'HIVE', swapSymbol: 'SWAP.HIVE', pairLabel: 'HIVE → SWAP.HIVE' },
+                      { symbol: 'HBD', displayName: 'HBD', swapSymbol: 'SWAP.HBD', pairLabel: 'HBD → SWAP.HBD' },
+                      { symbol: 'BTC', displayName: 'Bitcoin', swapSymbol: 'SWAP.BTC', pairLabel: 'BTC → SWAP.BTC' },
+                      { symbol: 'LTC', displayName: 'Litecoin', swapSymbol: 'SWAP.LTC', pairLabel: 'LTC → SWAP.LTC' },
+                      { symbol: 'ETH', displayName: 'Ethereum', swapSymbol: 'SWAP.ETH', pairLabel: 'ETH → SWAP.ETH' },
+                    ]
+                ).map((t) => (
+                  <option key={t.symbol} value={t.symbol}>
+                    {t.symbol} → {t.swapSymbol}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {depositLoading ? (
+              <p className="py-4 text-center text-[13px] text-[#99aab5]">Loading deposit routing...</p>
+            ) : depositInfo ? (
+              <div className="space-y-3 rounded-[8px] border border-[#e9e7e7] bg-[#fafafa] p-3.5 text-[13px]">
+                <p className="text-[#595959]">
+                  Send <strong>{depositSymbol}</strong> using the details below. Confirmed deposits are credited as{' '}
+                  <strong>{swapSymbol}</strong> to <strong>@{username}</strong>.
+                </p>
+
+                {depositInfo.account ? (
+                  <div>
+                    <div className="flex items-center justify-between text-[12px] text-[#99aab5]">
+                      <span>Deposit Account</span>
+                      <button
+                        type="button"
+                        onClick={() => void copyText('account', depositInfo.account)}
+                        className="cursor-pointer font-semibold text-[#af3d36] hover:underline"
+                      >
+                        {copiedField === 'account' ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                    <p className="mt-0.5 font-mono font-semibold text-[#333333]">
+                      @{depositInfo.account}
+                    </p>
+                  </div>
+                ) : null}
+
+                {depositInfo.memo ? (
+                  <div>
+                    <div className="flex items-center justify-between text-[12px] text-[#99aab5]">
+                      <span>Memo (Required)</span>
+                      <button
+                        type="button"
+                        onClick={() => void copyText('memo', depositInfo.memo)}
+                        className="cursor-pointer font-semibold text-[#af3d36] hover:underline"
+                      >
+                        {copiedField === 'memo' ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                    <p className="mt-0.5 break-all rounded border border-[#e9e7e7] bg-white p-2 font-mono text-[12px] text-[#333333]">
+                      {depositInfo.memo}
+                    </p>
+                  </div>
+                ) : null}
+
+                {depositInfo.address ? (
+                  <div>
+                    <div className="flex items-center justify-between text-[12px] text-[#99aab5]">
+                      <span>Deposit Address</span>
+                      <button
+                        type="button"
+                        onClick={() => void copyText('address', depositInfo.address)}
+                        className="cursor-pointer font-semibold text-[#af3d36] hover:underline"
+                      >
+                        {copiedField === 'address' ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                    <p className="mt-0.5 break-all rounded border border-[#e9e7e7] bg-white p-2 font-mono text-[12px] text-[#333333]">
+                      {depositInfo.address}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="cursor-pointer rounded-[24px] border border-[#d9d9d9] px-4 py-2 text-[13px] font-medium text-[#595959] hover:bg-[#f5f6f7]"
+              >
+                Close
+              </button>
+              {isHiveOrHbd && depositInfo?.account && depositInfo?.memo ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onSwitchAction?.({
+                      kind: 'TRANSFER',
+                      symbol: depositSymbol,
+                      precision: 3,
+                      isEngine: false,
+                      defaultTo: depositInfo.account || 'honey-swap',
+                      defaultMemo: depositInfo.memo || '',
+                    })
+                  }
+                  className="cursor-pointer rounded-[24px] bg-[#af3d36] px-5 py-2 text-[13px] font-semibold text-white hover:bg-[#93312b]"
+                >
+                  Continue to Transfer →
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const modalTitle =
     action.kind === 'EDIT_PROFILE'
       ? 'Edit Hive Profile'
-      : action.kind === 'TRANSFER'
-        ? action.savingsMode === 'DEPOSIT'
-          ? `Deposit ${action.symbol} to Savings`
-          : action.savingsMode === 'WITHDRAW'
-            ? `Withdraw ${action.symbol} from Savings (3-Day Unbonding)`
-            : `Transfer ${action.symbol}`
-        : action.kind === 'POWER_UP'
-          ? `Power Up / Stake ${action.symbol}`
-          : action.kind === 'POWER_DOWN'
-            ? `Power Down / Unstake ${action.symbol}`
-            : `Delegate ${action.symbol}`;
+      : action.kind === 'SWAP'
+        ? 'Swap Tokens (Hive Engine)'
+        : action.kind === 'WITHDRAW'
+          ? 'Withdraw Tokens'
+          : action.kind === 'TRANSFER'
+            ? action.savingsMode === 'DEPOSIT'
+              ? `Deposit ${action.symbol} to Savings`
+              : action.savingsMode === 'WITHDRAW'
+                ? `Withdraw ${action.symbol} from Savings (3-Day Unbonding)`
+                : `Transfer ${action.symbol}`
+            : action.kind === 'POWER_UP'
+              ? `Power Up ${action.symbol}`
+              : action.kind === 'POWER_DOWN'
+                ? `Power Down ${action.symbol}`
+                : `Delegate ${action.symbol}`;
 
   return (
     <div
@@ -378,7 +1436,7 @@ export function WalletActionModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[460px] rounded-[6px] border border-[#e0e0e0] bg-white p-5 shadow-xl"
+        className="w-full max-w-[460px] rounded-[8px] border border-[#e0e0e0] bg-white p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between border-b border-[#efefef] pb-3">
@@ -404,7 +1462,7 @@ export function WalletActionModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="cursor-pointer rounded bg-[#af3d36] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#96322c]"
+                className="cursor-pointer rounded-[24px] bg-[#af3d36] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#96322c]"
               >
                 Done
               </button>
@@ -489,6 +1547,157 @@ export function WalletActionModal({
                   />
                 </div>
               </>
+            ) : action.kind === 'SWAP' ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-[12px] font-bold text-[#595959]">From</label>
+                    <select
+                      value={swapFrom}
+                      onChange={(e) => setSwapFrom(e.target.value)}
+                      className="w-full rounded border border-[#d9d9d9] px-3 py-2 text-[13px] font-medium text-[#303540] outline-none focus:border-[#af3d36]"
+                    >
+                      {(swapList.length > 0
+                        ? swapList
+                        : [
+                            { symbol: 'SWAP.HIVE', balance: '0', name: 'SWAP.HIVE', precision: 8, iconUrl: null, pairs: [] },
+                            { symbol: 'WAIV', balance: '0', name: 'WAIV', precision: 8, iconUrl: null, pairs: [] },
+                          ]
+                      ).map((t) => (
+                        <option key={t.symbol} value={t.symbol}>
+                          {t.symbol} ({t.balance})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[12px] font-bold text-[#595959]">To</label>
+                    <input
+                      type="text"
+                      value={swapTo}
+                      onChange={(e) => setSwapTo(e.target.value.toUpperCase())}
+                      placeholder="WAIV"
+                      className="w-full rounded border border-[#d9d9d9] px-3 py-2 text-[13px] font-medium text-[#303540] outline-none focus:border-[#af3d36]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="text-[12px] font-bold text-[#595959]">
+                      Amount ({swapFrom})
+                    </label>
+                    {selectedSwapFromToken ? (
+                      <button
+                        type="button"
+                        onClick={() => setSwapAmountIn(selectedSwapFromToken.balance)}
+                        className="cursor-pointer text-[11px] font-bold text-[#af3d36] hover:underline"
+                      >
+                        Balance: {selectedSwapFromToken.balance}
+                      </button>
+                    ) : null}
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={swapAmountIn}
+                    onChange={(e) => setSwapAmountIn(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full rounded border border-[#d9d9d9] px-3 py-2 text-[14px] font-semibold text-[#303540] outline-none focus:border-[#af3d36]"
+                  />
+                </div>
+
+                <div className="rounded bg-[#f9fafb] p-3 text-[13px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#595959]">Estimated Output ({swapTo}):</span>
+                    <span className="font-mono font-bold text-[#303540]">
+                      {swapQuoteLoading
+                        ? 'Calculating...'
+                        : swapAmountOut
+                          ? `${swapAmountOut} ${swapTo}`
+                          : '—'}
+                    </span>
+                  </div>
+                  {swapAmountOut ? (
+                    <div className="mt-1 flex items-center justify-between text-[12px] text-[#99aab5]">
+                      <span>Price Impact:</span>
+                      <span>{swapImpact}%</span>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            ) : action.kind === 'WITHDRAW' ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-[12px] font-bold text-[#595959]">
+                      From Token
+                    </label>
+                    <input
+                      type="text"
+                      value={withdrawInputSym}
+                      onChange={(e) => setWithdrawInputSym(e.target.value.toUpperCase())}
+                      className="w-full rounded border border-[#d9d9d9] px-3 py-2 text-[13px] font-medium text-[#303540] outline-none focus:border-[#af3d36]"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[12px] font-bold text-[#595959]">
+                      Receive Network
+                    </label>
+                    <select
+                      value={withdrawOutputSym}
+                      onChange={(e) => setWithdrawOutputSym(e.target.value)}
+                      className="w-full rounded border border-[#d9d9d9] px-3 py-2 text-[13px] font-medium text-[#303540] outline-none focus:border-[#af3d36]"
+                    >
+                      <option value="HIVE">HIVE</option>
+                      <option value="HBD">HBD</option>
+                      <option value="BTC">BTC</option>
+                      <option value="LTC">LTC</option>
+                      <option value="ETH">ETH</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[12px] font-bold text-[#595959]">
+                    Quantity ({withdrawInputSym})
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={withdrawQty}
+                    onChange={(e) => setWithdrawQty(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full rounded border border-[#d9d9d9] px-3 py-2 text-[14px] font-semibold text-[#303540] outline-none focus:border-[#af3d36]"
+                  />
+                </div>
+
+                {withdrawOutputSym !== 'HIVE' && withdrawOutputSym !== 'HBD' ? (
+                  <div>
+                    <label className="mb-1 block text-[12px] font-bold text-[#595959]">
+                      Destination {withdrawOutputSym} Address
+                    </label>
+                    <input
+                      type="text"
+                      value={withdrawAddress}
+                      onChange={(e) => setWithdrawAddress(e.target.value)}
+                      placeholder={`Enter ${withdrawOutputSym} wallet address`}
+                      className="w-full rounded border border-[#d9d9d9] px-3 py-2 text-[13px] text-[#303540] outline-none focus:border-[#af3d36]"
+                    />
+                  </div>
+                ) : null}
+
+                {withdrawReceive !== null ? (
+                  <div className="rounded bg-[#f9fafb] p-3 text-[13px]">
+                    Estimated Receive:{' '}
+                    <strong className="font-mono">
+                      {withdrawReceive} {withdrawOutputSym}
+                    </strong>
+                  </div>
+                ) : null}
+              </>
             ) : (
               <>
                 <div className="rounded bg-[#f9fafb] px-3 py-2 text-[12px] text-[#595959]">
@@ -548,7 +1757,13 @@ export function WalletActionModal({
                       className="w-full rounded border border-[#d9d9d9] px-3 py-2 text-[13px] text-[#303540] outline-none focus:border-[#af3d36]"
                     />
                   </div>
-                ) : null}
+                ) : (
+                  <p className="rounded bg-[#f9fafb] p-2.5 text-[12px] text-[#595959]">
+                    {action.symbol === 'WAIV'
+                      ? 'WAIV Power unstakes in 4 equal weekly payments.'
+                      : 'HIVE Power powers down in 13 equal weekly payments.'}
+                  </p>
+                )}
 
                 {!(
                   action.kind === 'DELEGATE' &&
@@ -614,14 +1829,14 @@ export function WalletActionModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="cursor-pointer rounded border border-[#d9d9d9] bg-white px-4 py-2 text-[13px] font-medium text-[#595959] hover:bg-[#f5f5f5]"
+                className="cursor-pointer rounded-[24px] border border-[#d9d9d9] bg-white px-4 py-2 text-[13px] font-medium text-[#595959] hover:bg-[#f5f5f5]"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="cursor-pointer rounded bg-[#af3d36] px-5 py-2 text-[13px] font-bold text-white hover:bg-[#96322c] disabled:opacity-50"
+                className="cursor-pointer rounded-[24px] bg-[#af3d36] px-5 py-2 text-[13px] font-bold text-white hover:bg-[#96322c] disabled:opacity-50"
               >
                 {submitting ? 'Signing with Keychain...' : 'Confirm & Broadcast'}
               </button>

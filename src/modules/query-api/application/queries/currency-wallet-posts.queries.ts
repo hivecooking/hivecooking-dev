@@ -1,10 +1,28 @@
 import {
   currencyMarketResponseSchema,
+  engineDepositAddressResponseSchema,
+  engineDepositListResponseSchema,
+  engineSwapListResponseSchema,
+  engineSwapQuoteResponseSchema,
+  engineTokenDelegationsResponseSchema,
+  engineWithdrawListResponseSchema,
+  engineWithdrawQuoteResponseSchema,
+  hiveHpDelegationsResponseSchema,
+  hiveRcDelegationsResponseSchema,
   hiveWalletResponseSchema,
   postDiscussionResponseSchema,
   singlePostSchema,
   waivWalletResponseSchema,
   type CurrencyMarketResponse,
+  type EngineDepositAddressResponse,
+  type EngineDepositListResponse,
+  type EngineSwapListResponse,
+  type EngineSwapQuoteResponse,
+  type EngineTokenDelegationsResponse,
+  type EngineWithdrawListResponse,
+  type EngineWithdrawQuoteResponse,
+  type HiveHpDelegationsResponse,
+  type HiveRcDelegationsResponse,
   type HiveWalletResponse,
   type PostDiscussionResponse,
   type SinglePost,
@@ -33,6 +51,115 @@ export async function fetchHiveWallet(name: string, signal?: AbortSignal) {
     `/users/${encoded}/wallet/hive`,
     hiveWalletResponseSchema,
     { signal },
+  );
+}
+
+export async function fetchHiveHpDelegations(name: string, signal?: AbortSignal) {
+  const encoded = encodeURIComponent(name);
+  return queryApiFetch<HiveHpDelegationsResponse>(
+    `/users/${encoded}/wallet/hive/delegations`,
+    hiveHpDelegationsResponseSchema,
+    { signal },
+  );
+}
+
+export async function fetchHiveRcDelegations(name: string, signal?: AbortSignal) {
+  const encoded = encodeURIComponent(name);
+  return queryApiFetch<HiveRcDelegationsResponse>(
+    `/users/${encoded}/wallet/hive/rc-delegations`,
+    hiveRcDelegationsResponseSchema,
+    { signal },
+  );
+}
+
+export async function fetchEngineTokenDelegations(
+  name: string,
+  symbol = 'WAIV',
+  signal?: AbortSignal,
+) {
+  const encoded = encodeURIComponent(name);
+  return queryApiFetch<EngineTokenDelegationsResponse>(
+    `/users/${encoded}/wallet/engine/delegations`,
+    engineTokenDelegationsResponseSchema,
+    { query: { symbol }, signal },
+  );
+}
+
+export async function fetchEngineSwapList(name: string, signal?: AbortSignal) {
+  const encoded = encodeURIComponent(name);
+  return queryApiFetch<EngineSwapListResponse>(
+    `/users/${encoded}/wallet/engine/swap/list`,
+    engineSwapListResponseSchema,
+    { signal },
+  );
+}
+
+export async function fetchEngineSwapQuote(
+  name: string,
+  body: {
+    fromSymbol: string;
+    toSymbol: string;
+    amountIn: string;
+    direction?: 'exactInput' | 'exactOutput';
+    slippage?: number;
+  },
+  signal?: AbortSignal,
+) {
+  const encoded = encodeURIComponent(name);
+  return queryApiFetch<EngineSwapQuoteResponse>(
+    `/users/${encoded}/wallet/engine/swap/quote`,
+    engineSwapQuoteResponseSchema,
+    { method: 'POST', body, signal },
+  );
+}
+
+export async function fetchEngineDepositList(name: string, signal?: AbortSignal) {
+  const encoded = encodeURIComponent(name);
+  return queryApiFetch<EngineDepositListResponse>(
+    `/users/${encoded}/wallet/engine/deposit/list`,
+    engineDepositListResponseSchema,
+    { signal },
+  );
+}
+
+export async function fetchEngineDepositAddress(
+  name: string,
+  symbol: string,
+  signal?: AbortSignal,
+) {
+  const encoded = encodeURIComponent(name);
+  return queryApiFetch<EngineDepositAddressResponse>(
+    `/users/${encoded}/wallet/engine/deposit/address`,
+    engineDepositAddressResponseSchema,
+    { query: { symbol }, signal },
+  );
+}
+
+export async function fetchEngineWithdrawList(name: string, signal?: AbortSignal) {
+  const encoded = encodeURIComponent(name);
+  return queryApiFetch<EngineWithdrawListResponse>(
+    `/users/${encoded}/wallet/engine/withdraw/list`,
+    engineWithdrawListResponseSchema,
+    { signal },
+  );
+}
+
+export async function fetchEngineWithdrawQuote(
+  name: string,
+  body: {
+    inputSymbol: string;
+    outputSymbol: string;
+    quantity: string;
+    address?: string;
+    previewOnly?: boolean;
+  },
+  signal?: AbortSignal,
+) {
+  const encoded = encodeURIComponent(name);
+  return queryApiFetch<EngineWithdrawQuoteResponse>(
+    `/users/${encoded}/wallet/engine/withdraw/quote`,
+    engineWithdrawQuoteResponseSchema,
+    { method: 'POST', body, signal },
   );
 }
 

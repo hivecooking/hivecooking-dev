@@ -73,7 +73,14 @@ import {
   ReblogButton,
   VoteButtonWithSlider,
 } from './post-interactions';
-import { WalletActionModal, type WalletModalAction } from './wallet-modals';
+import {
+  ClaimRewardsSidebarCard,
+  WalletActionModal,
+  WalletActionSplit,
+  WalletActionsSidebarBottom,
+  WalletActionsSidebarTop,
+  type WalletModalAction,
+} from './wallet-modals';
 
 // --- Helpers & Icons ---
 
@@ -1279,6 +1286,7 @@ function WalletBalanceRow({
   amount,
   suffix,
   actions,
+  onAmountClick,
   borderBottom = true,
 }: {
   icon?: ReactNode;
@@ -1287,6 +1295,7 @@ function WalletBalanceRow({
   amount: string;
   suffix?: string;
   actions?: ReactNode;
+  onAmountClick?: () => void;
   borderBottom?: boolean;
 }) {
   return (
@@ -1302,9 +1311,19 @@ function WalletBalanceRow({
         {subtitle ? <p className="text-[14px] text-[#99aab5]">{subtitle}</p> : null}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5">
-        <p className="font-mono text-[16px] font-semibold text-[#333333] tabular-nums">
-          {amount} {suffix ? <span className="text-[14px] text-[#99aab5]">{suffix}</span> : null}
-        </p>
+        {onAmountClick ? (
+          <button
+            type="button"
+            onClick={onAmountClick}
+            className="cursor-pointer font-mono text-[16px] font-semibold text-[#333333] underline-offset-4 hover:text-[#af3d36] hover:underline tabular-nums"
+          >
+            {amount} {suffix ? <span className="text-[14px] text-[#99aab5]">{suffix}</span> : null}
+          </button>
+        ) : (
+          <p className="font-mono text-[16px] font-semibold text-[#333333] tabular-nums">
+            {amount} {suffix ? <span className="text-[14px] text-[#99aab5]">{suffix}</span> : null}
+          </p>
+        )}
         {actions ? <div className="flex flex-wrap items-center gap-1.5">{actions}</div> : null}
       </div>
     </div>
@@ -1312,11 +1331,14 @@ function WalletBalanceRow({
 }
 
 function WaivWalletView({
+  accountName,
+  canManage,
   wallet,
   history,
   onAction,
 }: {
   accountName: string;
+  canManage: boolean;
   wallet: WaivWalletResponse | null;
   history: WalletHistoryResponse | null;
   onAction: (action: WalletModalAction) => void;
@@ -1324,9 +1346,11 @@ function WaivWalletView({
   const display = (wallet?.display ?? {}) as Record<string, unknown>;
   const liquidWaiv = String(display.liquidWaiv ?? '0');
   const waivPower = String(display.waivPower ?? '0');
+  const delegationsNet = display.delegationsNet != null ? String(display.delegationsNet) : null;
   const estUsd = String(display.estAccountValueUsd ?? '0.00');
   const liquidNum = parseFloat(liquidWaiv.replace(/,/g, '')) || 0;
   const stakedNum = parseFloat(waivPower.replace(/,/g, '')) || 0;
+  const showDelegationsRow = delegationsNet != null && delegationsNet !== '';
 
   return (
     <div className="space-y-4">
@@ -1354,25 +1378,10 @@ function WaivWalletView({
             amount={liquidWaiv}
             suffix="WAIV"
             actions={
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onAction({
-                      kind: 'TRANSFER',
-                      symbol: 'WAIV',
-                      precision: 8,
-                      availableBalance: liquidNum,
-                      isEngine: true,
-                    })
-                  }
-                  className="cursor-pointer rounded border border-[#af3d36] px-2.5 py-0.5 text-[12px] font-semibold text-[#af3d36] hover:bg-[#af3d36] hover:text-white"
-                >
-                  Transfer
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
+              canManage ? (
+                <WalletActionSplit
+                  primaryLabel="Power up"
+                  onPrimary={() =>
                     onAction({
                       kind: 'POWER_UP',
                       symbol: 'WAIV',
@@ -1381,11 +1390,35 @@ function WaivWalletView({
                       isEngine: true,
                     })
                   }
-                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
-                >
-                  Power Up
-                </button>
-              </>
+                  menuAriaLabel="WAIV actions"
+                  menuItems={[
+                    {
+                      label: 'Transfer',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'TRANSFER',
+                          symbol: 'WAIV',
+                          precision: 8,
+                          availableBalance: liquidNum,
+                          isEngine: true,
+                        }),
+                    },
+                    {
+                      label: 'Swap tokens',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'SWAP',
+                          initialFromSymbol: 'WAIV',
+                          initialToSymbol: 'SWAP.HIVE',
+                        }),
+                    },
+                    {
+                      label: 'Withdraw to HIVE',
+                      onSelect: () => onAction({ kind: 'WITHDRAW' }),
+                    },
+                  ]}
+                />
+              ) : undefined
             }
           />
           <WalletBalanceRow
@@ -1398,12 +1431,12 @@ function WaivWalletView({
             subtitle="Staked WAIV tokens for voting"
             amount={waivPower}
             suffix="WP"
-            borderBottom={false}
+            borderBottom={showDelegationsRow}
             actions={
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
+              canManage ? (
+                <WalletActionSplit
+                  primaryLabel="Delegate"
+                  onPrimary={() =>
                     onAction({
                       kind: 'DELEGATE',
                       symbol: 'WAIV',
@@ -1412,28 +1445,75 @@ function WaivWalletView({
                       isEngine: true,
                     })
                   }
-                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
-                >
-                  Delegate
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onAction({
-                      kind: 'POWER_DOWN',
-                      symbol: 'WAIV',
-                      precision: 8,
-                      availableStaked: stakedNum,
-                      isEngine: true,
-                    })
-                  }
-                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
-                >
-                  Power Down
-                </button>
-              </>
+                  menuAriaLabel="WAIV Power actions"
+                  menuItems={[
+                    {
+                      label: 'Power down',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'POWER_DOWN',
+                          symbol: 'WAIV',
+                          precision: 8,
+                          availableStaked: stakedNum,
+                          isEngine: true,
+                        }),
+                    },
+                    {
+                      label: 'Manage delegations',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'MANAGE_DELEGATIONS',
+                          initialTab: 'WAIV',
+                        }),
+                    },
+                  ]}
+                />
+              ) : undefined
             }
           />
+          {showDelegationsRow ? (
+            <WalletBalanceRow
+              title="WAIV Delegations"
+              subtitle="Net delegated WAIV Power (received / delegated)"
+              amount={delegationsNet}
+              suffix="WP"
+              borderBottom={false}
+              onAmountClick={() =>
+                onAction({
+                  kind: 'DELEGATIONS_LIST',
+                  account: accountName,
+                  variant: 'waiv',
+                })
+              }
+              actions={
+                canManage ? (
+                  <WalletActionSplit
+                    primaryLabel="Manage"
+                    onPrimary={() =>
+                      onAction({
+                        kind: 'MANAGE_DELEGATIONS',
+                        initialTab: 'WAIV',
+                      })
+                    }
+                    menuAriaLabel="WAIV Delegations actions"
+                    menuItems={[
+                      {
+                        label: 'Delegate',
+                        onSelect: () =>
+                          onAction({
+                            kind: 'DELEGATE',
+                            symbol: 'WAIV',
+                            precision: 8,
+                            availableStaked: stakedNum,
+                            isEngine: true,
+                          }),
+                      },
+                    ]}
+                  />
+                ) : undefined
+              }
+            />
+          ) : null}
         </div>
       </section>
 
@@ -1468,27 +1548,26 @@ function HiveWalletView({
   wallet,
   activity,
   accountName,
+  canManage,
   onAction,
-  onClaimRewards,
-  claimingRewards,
 }: {
   accountName: string;
+  canManage: boolean;
   wallet: HiveWalletResponse | null;
   activity: UserActivityResponse | null;
   onAction: (action: WalletModalAction) => void;
-  onClaimRewards: (rewards: { hive: string; hbd: string; vests: string }) => void;
-  claimingRewards?: boolean;
 }) {
   const display = (wallet?.display ?? {}) as Record<string, unknown>;
   const chain = (wallet?.chain ?? {}) as Record<string, unknown>;
-  const pendingRewards = (wallet?.pendingRewards ?? {}) as Record<string, unknown>;
   const liquidHive = String(display.liquidHive ?? '0.000');
   const hivePower = String(display.hivePower ?? '0.000');
+  const delegationsNet = display.delegationsNet != null ? String(display.delegationsNet) : null;
   const rcMax = String(display.rcMax ?? '0');
   const hiveSavings = String(display.hiveSavings ?? '0.000');
   const hbdLiquid = String(display.hbdLiquid ?? '0.000');
   const hbdSavings = String(display.hbdSavings ?? '0.000');
   const estUsd = String(display.estAccountValueUsd ?? '0.00');
+  const showDelegationsRow = delegationsNet != null && delegationsNet !== '';
 
   const hiveNum = parseFloat(liquidHive.replace(/,/g, '')) || 0;
   const hpNum = parseFloat(hivePower.replace(/,/g, '')) || 0;
@@ -1498,37 +1577,8 @@ function HiveWalletView({
   const totalVestingShares = String(chain.totalVestingShares ?? '349314312874.598569 VESTS');
   const totalVestingFundSteem = String(chain.totalVestingFundSteem ?? '217801154.288 HIVE');
 
-  const rewardHive = String(pendingRewards.rewardHive ?? '0.000 HIVE');
-  const rewardHbd = String(pendingRewards.rewardHbd ?? '0.000 HBD');
-  const rewardVests = String(pendingRewards.rewardVests ?? '0.000000 VESTS');
-  const hasPendingRewards =
-    parseFloat(rewardHive) > 0 || parseFloat(rewardHbd) > 0 || parseFloat(rewardVests) > 0;
-
   return (
     <div className="space-y-4">
-      {hasPendingRewards ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[#af3d36]/30 bg-[#fff5f4] px-4 py-3">
-          <div className="text-[14px] text-[#303540]">
-            <span className="font-semibold text-[#af3d36]">Pending Rewards:</span>{' '}
-            {[rewardHive, rewardHbd, rewardVests].filter((x) => parseFloat(x) > 0).join(' · ')}
-          </div>
-          <button
-            type="button"
-            disabled={claimingRewards}
-            onClick={() =>
-              onClaimRewards({
-                hive: rewardHive,
-                hbd: rewardHbd,
-                vests: rewardVests,
-              })
-            }
-            className="cursor-pointer rounded bg-[#af3d36] px-3.5 py-1.5 text-[13px] font-bold text-white hover:bg-[#93312b] disabled:opacity-50"
-          >
-            {claimingRewards ? 'Claiming...' : 'Claim Rewards'}
-          </button>
-        </div>
-      ) : null}
-
       <section className="overflow-hidden rounded-[8px] border border-[#e9e7e7] bg-white shadow-xs">
         <div className="flex items-start gap-4 border-b border-[#e9e7e7] bg-[#d9534f]/8 px-4 py-4">
           <div className="hidden h-10 w-10 shrink-0 sm:block" aria-hidden />
@@ -1553,25 +1603,10 @@ function HiveWalletView({
             amount={liquidHive}
             suffix="HIVE"
             actions={
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onAction({
-                      kind: 'TRANSFER',
-                      symbol: 'HIVE',
-                      precision: 3,
-                      availableBalance: hiveNum,
-                      isEngine: false,
-                    })
-                  }
-                  className="cursor-pointer rounded border border-[#af3d36] px-2.5 py-0.5 text-[12px] font-semibold text-[#af3d36] hover:bg-[#af3d36] hover:text-white"
-                >
-                  Transfer
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
+              canManage ? (
+                <WalletActionSplit
+                  primaryLabel="Power up"
+                  onPrimary={() =>
                     onAction({
                       kind: 'POWER_UP',
                       symbol: 'HIVE',
@@ -1580,27 +1615,38 @@ function HiveWalletView({
                       isEngine: false,
                     })
                   }
-                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
-                >
-                  Power Up
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onAction({
-                      kind: 'TRANSFER',
-                      symbol: 'HIVE',
-                      precision: 3,
-                      availableBalance: hiveNum,
-                      isEngine: false,
-                      savingsMode: 'DEPOSIT',
-                    })
-                  }
-                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
-                >
-                  To Savings
-                </button>
-              </>
+                  menuAriaLabel="HIVE actions"
+                  menuItems={[
+                    {
+                      label: 'Transfer',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'TRANSFER',
+                          symbol: 'HIVE',
+                          precision: 3,
+                          availableBalance: hiveNum,
+                          isEngine: false,
+                        }),
+                    },
+                    {
+                      label: 'Convert to SWAP.HIVE (Deposit)',
+                      onSelect: () => onAction({ kind: 'DEPOSIT', initialSymbol: 'HIVE' }),
+                    },
+                    {
+                      label: 'Transfer to savings',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'TRANSFER',
+                          symbol: 'HIVE',
+                          precision: 3,
+                          availableBalance: hiveNum,
+                          isEngine: false,
+                          savingsMode: 'DEPOSIT',
+                        }),
+                    },
+                  ]}
+                />
+              ) : undefined
             }
           />
           <WalletBalanceRow
@@ -1614,10 +1660,10 @@ function HiveWalletView({
             amount={hivePower}
             suffix="HP"
             actions={
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
+              canManage ? (
+                <WalletActionSplit
+                  primaryLabel="Delegate"
+                  onPrimary={() =>
                     onAction({
                       kind: 'DELEGATE',
                       symbol: 'HP',
@@ -1628,50 +1674,108 @@ function HiveWalletView({
                       totalVestingFundSteem,
                     })
                   }
-                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
-                >
-                  Delegate
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onAction({
-                      kind: 'POWER_DOWN',
-                      symbol: 'HP',
-                      precision: 3,
-                      availableStaked: hpNum,
-                      isEngine: false,
-                      totalVestingShares,
-                      totalVestingFundSteem,
-                    })
-                  }
-                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
-                >
-                  Power Down
-                </button>
-              </>
+                  menuAriaLabel="HIVE Power actions"
+                  menuItems={[
+                    {
+                      label: 'Power down',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'POWER_DOWN',
+                          symbol: 'HP',
+                          precision: 3,
+                          availableStaked: hpNum,
+                          isEngine: false,
+                          totalVestingShares,
+                          totalVestingFundSteem,
+                        }),
+                    },
+                    {
+                      label: 'Manage delegations',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'MANAGE_DELEGATIONS',
+                          initialTab: 'HP',
+                        }),
+                    },
+                  ]}
+                />
+              ) : undefined
             }
           />
+          {showDelegationsRow ? (
+            <WalletBalanceRow
+              title="HIVE Delegations"
+              subtitle="Net delegated HIVE Power (received / delegated)"
+              amount={delegationsNet}
+              suffix="HP"
+              onAmountClick={() =>
+                onAction({
+                  kind: 'DELEGATIONS_LIST',
+                  account: accountName,
+                  variant: 'hiveHp',
+                })
+              }
+              actions={
+                canManage ? (
+                  <WalletActionSplit
+                    primaryLabel="Manage"
+                    onPrimary={() =>
+                      onAction({
+                        kind: 'MANAGE_DELEGATIONS',
+                        initialTab: 'HP',
+                      })
+                    }
+                    menuAriaLabel="HIVE Delegations actions"
+                    menuItems={[
+                      {
+                        label: 'Delegate',
+                        onSelect: () =>
+                          onAction({
+                            kind: 'DELEGATE',
+                            symbol: 'HP',
+                            precision: 3,
+                            availableStaked: hpNum,
+                            isEngine: false,
+                            totalVestingShares,
+                            totalVestingFundSteem,
+                          }),
+                      },
+                    ]}
+                  />
+                ) : undefined
+              }
+            />
+          ) : null}
           <WalletBalanceRow
             title="Resource Credits"
             subtitle="Maximum transaction capacity"
             amount={rcMax}
             suffix="b RC"
             actions={
-              <button
-                type="button"
-                onClick={() =>
-                  onAction({
-                    kind: 'DELEGATE',
-                    symbol: 'RC',
-                    precision: 2,
-                    isEngine: false,
-                  })
-                }
-                className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
-              >
-                Delegate RC
-              </button>
+              canManage ? (
+                <WalletActionSplit
+                  primaryLabel="Delegate RC"
+                  onPrimary={() =>
+                    onAction({
+                      kind: 'DELEGATE',
+                      symbol: 'RC',
+                      precision: 2,
+                      isEngine: false,
+                    })
+                  }
+                  menuAriaLabel="Resource Credits actions"
+                  menuItems={[
+                    {
+                      label: 'Manage RC delegations',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'MANAGE_DELEGATIONS',
+                          initialTab: 'RC',
+                        }),
+                    },
+                  ]}
+                />
+              ) : undefined
             }
           />
           <WalletBalanceRow
@@ -1680,22 +1784,36 @@ function HiveWalletView({
             amount={hiveSavings}
             suffix="HIVE"
             actions={
-              <button
-                type="button"
-                onClick={() =>
-                  onAction({
-                    kind: 'TRANSFER',
-                    symbol: 'HIVE',
-                    precision: 3,
-                    availableBalance: hiveSavNum,
-                    isEngine: false,
-                    savingsMode: 'WITHDRAW',
-                  })
-                }
-                className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
-              >
-                Withdraw
-              </button>
+              canManage ? (
+                <WalletActionSplit
+                  primaryLabel="Deposit"
+                  onPrimary={() =>
+                    onAction({
+                      kind: 'TRANSFER',
+                      symbol: 'HIVE',
+                      precision: 3,
+                      availableBalance: hiveNum,
+                      isEngine: false,
+                      savingsMode: 'DEPOSIT',
+                    })
+                  }
+                  menuAriaLabel="HIVE Savings actions"
+                  menuItems={[
+                    {
+                      label: 'Withdraw from savings',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'TRANSFER',
+                          symbol: 'HIVE',
+                          precision: 3,
+                          availableBalance: hiveSavNum,
+                          isEngine: false,
+                          savingsMode: 'WITHDRAW',
+                        }),
+                    },
+                  ]}
+                />
+              ) : undefined
             }
           />
           <WalletBalanceRow
@@ -1705,10 +1823,10 @@ function HiveWalletView({
             amount={hbdLiquid}
             suffix="HBD"
             actions={
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
+              canManage ? (
+                <WalletActionSplit
+                  primaryLabel="Transfer"
+                  onPrimary={() =>
                     onAction({
                       kind: 'TRANSFER',
                       symbol: 'HBD',
@@ -1717,27 +1835,23 @@ function HiveWalletView({
                       isEngine: false,
                     })
                   }
-                  className="cursor-pointer rounded border border-[#af3d36] px-2.5 py-0.5 text-[12px] font-semibold text-[#af3d36] hover:bg-[#af3d36] hover:text-white"
-                >
-                  Transfer
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onAction({
-                      kind: 'TRANSFER',
-                      symbol: 'HBD',
-                      precision: 3,
-                      availableBalance: hbdNum,
-                      isEngine: false,
-                      savingsMode: 'DEPOSIT',
-                    })
-                  }
-                  className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
-                >
-                  To Savings
-                </button>
-              </>
+                  menuAriaLabel="HBD actions"
+                  menuItems={[
+                    {
+                      label: 'Transfer to savings',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'TRANSFER',
+                          symbol: 'HBD',
+                          precision: 3,
+                          availableBalance: hbdNum,
+                          isEngine: false,
+                          savingsMode: 'DEPOSIT',
+                        }),
+                    },
+                  ]}
+                />
+              ) : undefined
             }
           />
           <WalletBalanceRow
@@ -1747,22 +1861,36 @@ function HiveWalletView({
             suffix="HBD"
             borderBottom={false}
             actions={
-              <button
-                type="button"
-                onClick={() =>
-                  onAction({
-                    kind: 'TRANSFER',
-                    symbol: 'HBD',
-                    precision: 3,
-                    availableBalance: hbdSavNum,
-                    isEngine: false,
-                    savingsMode: 'WITHDRAW',
-                  })
-                }
-                className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2.5 py-0.5 text-[12px] font-medium text-[#333333] hover:border-[#af3d36] hover:text-[#af3d36]"
-              >
-                Withdraw
-              </button>
+              canManage ? (
+                <WalletActionSplit
+                  primaryLabel="Withdraw"
+                  onPrimary={() =>
+                    onAction({
+                      kind: 'TRANSFER',
+                      symbol: 'HBD',
+                      precision: 3,
+                      availableBalance: hbdSavNum,
+                      isEngine: false,
+                      savingsMode: 'WITHDRAW',
+                    })
+                  }
+                  menuAriaLabel="HBD Savings actions"
+                  menuItems={[
+                    {
+                      label: 'Deposit',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'TRANSFER',
+                          symbol: 'HBD',
+                          precision: 3,
+                          availableBalance: hbdNum,
+                          isEngine: false,
+                          savingsMode: 'DEPOSIT',
+                        }),
+                    },
+                  ]}
+                />
+              ) : undefined
             }
           />
         </div>
@@ -1794,9 +1922,11 @@ function HiveWalletView({
 }
 
 function EngineWalletView({
+  canManage,
   wallet,
   onAction,
 }: {
+  canManage: boolean;
   wallet: EngineWalletResponse | null;
   onAction: (action: WalletModalAction) => void;
 }) {
@@ -1827,6 +1957,68 @@ function EngineWalletView({
           combined.map((token) => {
             const balNum = parseFloat(String(token.balance).replace(/,/g, '')) || 0;
             const stakeNum = parseFloat(String(token.stake).replace(/,/g, '')) || 0;
+            const isPinnedSwap = token.symbol.toUpperCase().startsWith('SWAP.');
+            const menuItems = [
+              ...(isPinnedSwap
+                ? [
+                    {
+                      label: 'Transfer',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'TRANSFER',
+                          symbol: token.symbol,
+                          precision: token.precision ?? 3,
+                          availableBalance: balNum,
+                          isEngine: true,
+                        }),
+                    },
+                  ]
+                : [
+                    {
+                      label: 'Swap',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'SWAP',
+                          initialFromSymbol: token.symbol,
+                        }),
+                    },
+                  ]),
+              ...(token.stakingEnabled
+                ? [
+                    {
+                      label: 'Stake',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'POWER_UP',
+                          symbol: token.symbol,
+                          precision: token.precision ?? 3,
+                          availableBalance: balNum,
+                          isEngine: true,
+                        }),
+                    },
+                    {
+                      label: 'Unstake',
+                      onSelect: () =>
+                        onAction({
+                          kind: 'POWER_DOWN',
+                          symbol: token.symbol,
+                          precision: token.precision ?? 3,
+                          availableStaked: stakeNum,
+                          isEngine: true,
+                        }),
+                    },
+                  ]
+                : []),
+              ...(isPinnedSwap
+                ? [
+                    {
+                      label: 'Withdraw',
+                      onSelect: () => onAction({ kind: 'WITHDRAW' }),
+                    },
+                  ]
+                : []),
+            ];
+
             return (
               <div key={token.symbol} className="flex flex-wrap items-center gap-4 py-4">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#e9e7e7] bg-[#fafafa]">
@@ -1840,7 +2032,7 @@ function EngineWalletView({
                   <p className="text-[16px] font-semibold text-[#333333]">{token.symbol}</p>
                   <p className="text-[14px] text-[#99aab5]">{token.name}</p>
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
                   <p className="font-mono text-[14px] text-[#99aab5] tabular-nums">
                     {token.balance}{' '}
                     {stakeNum > 0 ? <span className="text-[12px]">({token.stake} staked)</span> : null}
@@ -1848,57 +2040,30 @@ function EngineWalletView({
                   <p className="font-mono text-[16px] font-semibold text-[#333333] tabular-nums">
                     ${token.usdEstimate.toFixed(2)}
                   </p>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onAction({
-                          kind: 'TRANSFER',
-                          symbol: token.symbol,
-                          precision: token.precision ?? 3,
-                          availableBalance: balNum,
-                          isEngine: true,
-                        })
-                      }
-                      className="cursor-pointer rounded border border-[#af3d36] px-2 py-0.5 text-[11px] font-semibold text-[#af3d36] hover:bg-[#af3d36] hover:text-white"
-                    >
-                      Transfer
-                    </button>
-                    {token.stakingEnabled ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onAction({
-                              kind: 'POWER_UP',
-                              symbol: token.symbol,
-                              precision: token.precision ?? 3,
-                              availableBalance: balNum,
-                              isEngine: true,
-                            })
-                          }
-                          className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2 py-0.5 text-[11px] text-[#333333] hover:border-[#af3d36]"
-                        >
-                          Stake
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onAction({
-                              kind: 'POWER_DOWN',
-                              symbol: token.symbol,
-                              precision: token.precision ?? 3,
-                              availableStaked: stakeNum,
-                              isEngine: true,
-                            })
-                          }
-                          className="cursor-pointer rounded border border-[#d9d9d9] bg-[#fafafa] px-2 py-0.5 text-[11px] text-[#333333] hover:border-[#af3d36]"
-                        >
-                          Unstake
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
+                  {canManage ? (
+                    <WalletActionSplit
+                      primaryLabel={isPinnedSwap ? 'Swap to WAIV' : 'Transfer'}
+                      onPrimary={() => {
+                        if (isPinnedSwap) {
+                          onAction({
+                            kind: 'SWAP',
+                            initialFromSymbol: token.symbol,
+                            initialToSymbol: 'WAIV',
+                          });
+                        } else {
+                          onAction({
+                            kind: 'TRANSFER',
+                            symbol: token.symbol,
+                            precision: token.precision ?? 3,
+                            availableBalance: balNum,
+                            isEngine: true,
+                          });
+                        }
+                      }}
+                      menuAriaLabel={`${token.symbol} actions`}
+                      menuItems={menuItems}
+                    />
+                  ) : null}
                 </div>
               </div>
             );
@@ -2329,26 +2494,30 @@ export function UserProfileViewer({
             setTabLoading(false);
           }
         } else if (walletType === 'ENGINE') {
-          const [mktRes, engRes] = await Promise.all([
+          const [mktRes, engRes, hiveRes] = await Promise.all([
             mktPromise,
             fetchEngineWallet(username, controller.signal),
+            fetchHiveWallet(username, controller.signal),
             fetchEngineWalletHistory(username, { limit: 20 }, controller.signal),
           ]);
           if (!cancelled) {
             if (isOk(mktRes)) setMarketData(mktRes.value);
             setEngineWallet(isOk(engRes) ? engRes.value : null);
+            if (isOk(hiveRes)) setHiveWallet(hiveRes.value);
             setTabLoading(false);
           }
         } else {
-          const [mktRes, waivRes, histRes] = await Promise.all([
+          const [mktRes, waivRes, histRes, hiveRes] = await Promise.all([
             mktPromise,
             fetchWaivWallet(username, controller.signal),
             fetchWaivWalletHistory(username, { limit: 20 }, controller.signal),
+            fetchHiveWallet(username, controller.signal),
           ]);
           if (!cancelled) {
             if (isOk(mktRes)) setMarketData(mktRes.value);
             setWaivWallet(isOk(waivRes) ? waivRes.value : null);
             setWaivHistory(isOk(histRes) ? histRes.value : null);
+            if (isOk(hiveRes)) setHiveWallet(hiveRes.value);
             setTabLoading(false);
           }
         }
@@ -2430,16 +2599,25 @@ export function UserProfileViewer({
   const [walletModalAction, setWalletModalAction] = useState<WalletModalAction | null>(null);
   const [claimingRewards, setClaimingRewards] = useState(false);
   const [followedRows, setFollowedRows] = useState<Record<string, boolean>>({});
+  const isSameUser =
+    viewer != null && viewer.trim().toLowerCase() === username.trim().toLowerCase();
 
   const openWalletModal = useCallback(
     (action: WalletModalAction) => {
+      if (action.kind === 'DELEGATIONS_LIST') {
+        setWalletModalAction(action);
+        return;
+      }
       if (!viewer) {
         openLoginModal();
         return;
       }
+      if (!isSameUser) {
+        return;
+      }
       setWalletModalAction(action);
     },
-    [viewer],
+    [isSameUser, viewer],
   );
 
   const handleClaimRewards = useCallback(
@@ -2681,8 +2859,6 @@ export function UserProfileViewer({
   const followerCount = profile?.followerCount ?? 0;
   const followingCount = profile?.followingCount ?? 0;
   const postingCount = profile?.postingCount ?? 0;
-  const isSameUser =
-    viewer != null && viewer.trim().toLowerCase() === username.trim().toLowerCase();
 
   const primaryTabs: {
     key: PrimarySectionKey;
@@ -3075,7 +3251,7 @@ export function UserProfileViewer({
                     </div>
                   ) : null}
 
-                  {primarySection === 'feed' && headSegment === 'threads' ? (
+                  {primarySection === 'feed' && headSegment === 'threads' && isSameUser ? (
                     <QuickThreadComposer
                       onPublished={(newThread) => {
                         setFeedPosts((prev) => [
@@ -3223,17 +3399,21 @@ export function UserProfileViewer({
                     ) : walletType === 'HIVE' ? (
                       <HiveWalletView
                         accountName={username}
+                        canManage={isSameUser}
                         wallet={hiveWallet}
                         activity={hiveWalletActivity}
                         onAction={openWalletModal}
-                        onClaimRewards={(r) => void handleClaimRewards(r)}
-                        claimingRewards={claimingRewards}
                       />
                     ) : walletType === 'ENGINE' ? (
-                      <EngineWalletView wallet={engineWallet} onAction={openWalletModal} />
+                      <EngineWalletView
+                        canManage={isSameUser}
+                        wallet={engineWallet}
+                        onAction={openWalletModal}
+                      />
                     ) : (
                       <WaivWalletView
                         accountName={username}
+                        canManage={isSameUser}
                         wallet={waivWallet}
                         history={waivHistory}
                         onAction={openWalletModal}
@@ -3400,7 +3580,33 @@ export function UserProfileViewer({
                     }
                   />
                 ) : primarySection === 'transfers' ? (
-                  <ProfileCryptoMarketPanel market={marketData} />
+                  <div className="space-y-4">
+                    {headSegment !== 'permissions' ? (
+                      <WalletActionsSidebarTop
+                        canManage={isSameUser}
+                        walletType={walletType}
+                        onOpenAction={openWalletModal}
+                      />
+                    ) : null}
+                    <ProfileCryptoMarketPanel market={marketData} />
+                    {headSegment !== 'permissions' ? (
+                      <>
+                        <ClaimRewardsSidebarCard
+                          canManage={isSameUser}
+                          pendingRewards={
+                            hiveWallet?.pendingRewards as Record<string, string> | undefined
+                          }
+                          claiming={claimingRewards}
+                          onClaim={(r) => void handleClaimRewards(r)}
+                        />
+                        <WalletActionsSidebarBottom
+                          canManage={isSameUser}
+                          walletType={walletType}
+                          onOpenAction={openWalletModal}
+                        />
+                      </>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -3411,6 +3617,7 @@ export function UserProfileViewer({
       <WalletActionModal
         action={walletModalAction}
         onClose={() => setWalletModalAction(null)}
+        onSwitchAction={setWalletModalAction}
       />
     </div>
   );

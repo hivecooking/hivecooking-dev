@@ -586,3 +586,186 @@ export const userAuthorityListResponseSchema = z.object({
 });
 
 export type UserAuthorityListResponse = z.infer<typeof userAuthorityListResponseSchema>;
+
+export const hiveHpDelegationsResponseSchema = z.object({
+  incoming: z
+    .array(
+      z.object({
+        delegator: z.string(),
+        hp: z.string(),
+        vestingShares: z.string().optional(),
+      }),
+    )
+    .optional()
+    .default([]),
+  outgoing: z
+    .array(
+      z.object({
+        delegatee: z.string(),
+        hp: z.string(),
+        vestingShares: z.string().optional(),
+      }),
+    )
+    .optional()
+    .default([]),
+  expirations: z
+    .array(
+      z.object({
+        delegator: z.string().optional().default(''),
+        hp: z.string(),
+        expiration: z.string().optional(),
+      }),
+    )
+    .optional()
+    .default([]),
+});
+
+export type HiveHpDelegationsResponse = z.infer<typeof hiveHpDelegationsResponseSchema>;
+
+export const hiveRcDelegationsResponseSchema = z.object({
+  incoming: z
+    .array(
+      z.object({
+        from: z.string(),
+        delegatedRc: z.union([z.number(), z.string()]),
+      }),
+    )
+    .optional()
+    .default([]),
+  outgoing: z
+    .array(
+      z.object({
+        to: z.string(),
+        delegatedRc: z.union([z.number(), z.string()]),
+      }),
+    )
+    .optional()
+    .default([]),
+});
+
+export type HiveRcDelegationsResponse = z.infer<typeof hiveRcDelegationsResponseSchema>;
+
+export const engineTokenDelegationsResponseSchema = z.object({
+  incoming: z
+    .array(
+      z.object({
+        from: z.string(),
+        to: z.string().optional(),
+        symbol: z.string().optional().default('WAIV'),
+        quantity: z.string(),
+      }),
+    )
+    .optional()
+    .default([]),
+  outgoing: z
+    .array(
+      z.object({
+        from: z.string().optional(),
+        to: z.string(),
+        symbol: z.string().optional().default('WAIV'),
+        quantity: z.string(),
+      }),
+    )
+    .optional()
+    .default([]),
+});
+
+export type EngineTokenDelegationsResponse = z.infer<typeof engineTokenDelegationsResponseSchema>;
+
+export const engineSwapListResponseSchema = z.object({
+  account: z.string().optional().default(''),
+  tokens: z
+    .array(
+      z.object({
+        symbol: z.string(),
+        name: z.string().optional().default(''),
+        balance: z.string(),
+        precision: z.coerce.number().optional().default(3),
+        iconUrl: z.string().nullable().optional().default(null),
+        pairs: z
+          .array(
+            z.object({
+              symbol: z.string(),
+              tokenPair: z.string(),
+              precision: z.coerce.number().optional().default(3),
+            }),
+          )
+          .optional()
+          .default([]),
+      }),
+    )
+    .optional()
+    .default([]),
+});
+
+export type EngineSwapListResponse = z.infer<typeof engineSwapListResponseSchema>;
+
+export const engineSwapQuoteResponseSchema = z.object({
+  amountOut: z.string(),
+  minAmountOut: z.string().optional().default('0'),
+  priceImpact: z.string().optional().default('0'),
+  feePercentOptions: z.array(z.number()).optional().default([0.5, 1, 2, 5]),
+  customJson: z.array(z.record(z.string(), z.unknown())).optional().default([]),
+});
+
+export type EngineSwapQuoteResponse = z.infer<typeof engineSwapQuoteResponseSchema>;
+
+export const engineDepositListResponseSchema = z.object({
+  account: z.string().optional().default(''),
+  tokens: z
+    .array(
+      z.object({
+        symbol: z.string(),
+        displayName: z.string().optional().default(''),
+        swapSymbol: z.string(),
+        pairLabel: z.string().optional().default(''),
+      }),
+    )
+    .optional()
+    .default([]),
+});
+
+export type EngineDepositListResponse = z.infer<typeof engineDepositListResponseSchema>;
+
+export const engineDepositAddressResponseSchema = z.object({
+  symbol: z.string().optional().default('HIVE'),
+  account: z.string().nullable().optional().default(null),
+  memo: z.string().nullable().optional().default(null),
+  address: z.string().nullable().optional().default(null),
+  pair: z.string().nullable().optional().default(null),
+  exRate: z.number().nullable().optional().default(1),
+});
+
+export type EngineDepositAddressResponse = z.infer<typeof engineDepositAddressResponseSchema>;
+
+export const engineWithdrawListResponseSchema = z.object({
+  account: z.string().optional().default(''),
+  tokens: z
+    .array(
+      z.object({
+        inputSymbol: z.string(),
+        outputSymbol: z.string(),
+        balanceSymbol: z.string().optional().default(''),
+        displayName: z.string().optional().default(''),
+        label: z.string().optional().default(''),
+        balance: z.string(),
+        precision: z.coerce.number().optional().default(3),
+        requiresExternalAddress: z.boolean().optional().default(false),
+        minimumSwapAmount: z.number().nullable().optional().default(null),
+        minimumReceiveAmount: z.number().nullable().optional().default(null),
+      }),
+    )
+    .optional()
+    .default([]),
+});
+
+export type EngineWithdrawListResponse = z.infer<typeof engineWithdrawListResponseSchema>;
+
+export const engineWithdrawQuoteResponseSchema = z.object({
+  predictiveAmount: z.number().nullable().optional().default(null),
+  customJsonPayload: z.array(z.record(z.string(), z.unknown())).optional().default([]),
+  error: z.string().optional(),
+  errorCode: z.string().optional(),
+});
+
+export type EngineWithdrawQuoteResponse = z.infer<typeof engineWithdrawQuoteResponseSchema>;
