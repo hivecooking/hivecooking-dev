@@ -549,7 +549,15 @@ export async function fetchObjectPosts(
 
 export async function fetchObjectUpdates(
   objectId: string,
-  body: { limit?: number; cursor?: string; update_types?: string[]; include_rejected?: boolean } = {},
+  body: {
+    limit?: number;
+    cursor?: string | null;
+    update_type?: string;
+    update_types?: string[];
+    locale?: string;
+    sort?: 'recency' | 'approval';
+    include_rejected?: boolean;
+  } = {},
   signal?: AbortSignal,
 ) {
   const encoded = encodeURIComponent(objectId);
@@ -558,10 +566,20 @@ export async function fetchObjectUpdates(
     objectUpdatesResponseSchema,
     {
       method: 'POST',
+      query: {
+        sort: body.sort ?? 'recency',
+        update_type: body.update_type,
+        locale: body.locale,
+        limit: body.limit ?? 20,
+        cursor: body.cursor ?? undefined,
+      },
       body: {
-        limit: body.limit ?? 30,
-        cursor: body.cursor,
-        update_types: body.update_types,
+        limit: body.limit ?? 20,
+        cursor: body.cursor ?? undefined,
+        sort: body.sort ?? 'recency',
+        update_type: body.update_type,
+        update_types: body.update_types ?? (body.update_type ? [body.update_type] : undefined),
+        locale: body.locale,
         include_rejected: body.include_rejected ?? true,
       },
       signal,

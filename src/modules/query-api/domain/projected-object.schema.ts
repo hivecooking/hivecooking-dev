@@ -29,6 +29,9 @@ export const projectedObjectWithCountsSchema = projectedObjectSchema.extend({
   followers_count: z.number().nullable().optional(),
   posts_count: z.number().nullable().optional(),
   updates_count: z.number().nullable().optional(),
+  experts_count: z.number().nullable().optional(),
+  update_type_counts: z.record(z.string(), z.number()).nullable().optional(),
+  update_locales: z.array(z.string()).nullable().optional(),
   is_following: z.boolean().nullable().optional(),
   viewer_bell: z.boolean().nullable().optional(),
 });

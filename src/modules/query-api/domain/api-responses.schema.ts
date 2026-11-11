@@ -237,11 +237,23 @@ export const postDiscussionResponseSchema = z.object({
 
 export type PostDiscussionResponse = z.infer<typeof postDiscussionResponseSchema>;
 
+export const objectUpdateDecisivePrivilegedVoteSchema = z
+  .object({
+    tier: z.enum(['admin', 'trusted']).catch('admin'),
+    vote: z.enum(['for', 'against']).catch('for'),
+    voter: z.string(),
+  })
+  .nullable()
+  .optional()
+  .default(null);
+
 export const objectUpdateItemSchema = z.object({
   update_id: z.string(),
   object_id: z.string(),
   update_type: z.string(),
   creator: z.string(),
+  creator_avatar_url: z.string().nullable().optional().default(null),
+  creator_wobjects_weight: z.number().nullable().optional().default(0),
   locale: z.string().nullable().optional().default(null),
   created_at_unix: z.number().optional().default(0),
   event_seq: z.string().optional().default('0'),
@@ -249,12 +261,21 @@ export const objectUpdateItemSchema = z.object({
   value_text: z.string().nullable().optional().default(null),
   value_geo: z.unknown().nullable().optional().default(null),
   value_json: z.unknown().nullable().optional().default(null),
+  image_preview_urls: z.array(z.string()).optional().default([]),
   search_text: z.string().nullable().optional().default(null),
   validity_status: z.string().optional().default('VALID'),
+  approve_percent: z.number().optional().default(100),
+  for_vote_count: z.number().optional().default(0),
+  against_vote_count: z.number().optional().default(0),
+  for_preview_voters: z.array(z.string()).optional().default([]),
+  against_preview_voters: z.array(z.string()).optional().default([]),
   for_weight: z.number().optional().default(0),
   against_weight: z.number().optional().default(0),
   votes_count: z.number().optional().default(0),
-  viewer_vote: z.string().nullable().optional().default(null),
+  viewer_vote: z.enum(['for', 'against']).nullable().optional().catch(null).default(null),
+  decisive_privileged_vote: objectUpdateDecisivePrivilegedVoteSchema,
+  rank_score: z.number().nullable().optional().default(null),
+  viewer_rank: z.number().nullable().optional().default(null),
 });
 
 export type ObjectUpdateItem = z.infer<typeof objectUpdateItemSchema>;

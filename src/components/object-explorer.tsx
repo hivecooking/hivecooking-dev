@@ -33,7 +33,7 @@ import {
 } from '@/modules/wallet';
 import { isOk } from '@/shared/domain/result';
 
-import { ObjectEditModal } from './object-edit-modal';
+import { ObjectEditModeShell, useIsSiteAdmin } from './object-edit-modal';
 import { PostBodyRenderer } from './post-body-renderer';
 import { openLoginModal, PostDiscussionSection } from './post-interactions';
 
@@ -283,6 +283,7 @@ export function CatalogItemCard({
   inCarousel?: boolean;
 }) {
   const { username, broadcast } = useWallet();
+  const isSiteAdmin = useIsSiteAdmin(username);
   const [favorited, setFavorited] = useState(Boolean(item.isFavorited));
   const [favPending, setFavPending] = useState(false);
 
@@ -335,7 +336,7 @@ export function CatalogItemCard({
         inCarousel ? 'mr-[10px] h-[531.6px] w-[273.2px]' : 'h-full w-full'
       }`}
     >
-      {username ? (
+      {isSiteAdmin ? (
         <button
           type="button"
           aria-label="Favorite"
@@ -471,11 +472,13 @@ export function ObjectExplorer({
   const router = useRouter();
   const searchParams = useSearchParams();
   const { username, broadcast } = useWallet();
+  const isSiteAdmin = useIsSiteAdmin(username);
 
   const rootId = defaultObjectId ?? getRootObjectId();
   const currentId = forcedObjectId || initialObjectId || searchParams.get('id') || rootId;
   const pathParam = searchParams.get('path');
   const activeSubTab = initialSubTab || searchParams.get('tab') || 'default';
+  const editQueryParam = searchParams.get('edit');
 
   const breadcrumbs = useMemo(() => parseBreadcrumbs(pathParam), [pathParam]);
 
@@ -498,7 +501,8 @@ export function ObjectExplorer({
   const [linkedObjectsOpen, setLinkedObjectsOpen] = useState(true);
   const [hashtagsOpen, setHashtagsOpen] = useState(false);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
-  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(editQueryParam === '1');
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [isFavorited, setIsFavorited] = useState(false);
   const [isFollowingObj, setIsFollowingObj] = useState(false);
   const [featuredCommentsOpen, setFeaturedCommentsOpen] = useState(true);
@@ -621,7 +625,7 @@ export function ObjectExplorer({
       cancelled = true;
       controller.abort();
     };
-  }, [activeSubTab, currentId, t]);
+  }, [activeSubTab, currentId, reloadNonce, t]);
 
   const handleFollowObject = useCallback(async () => {
     if (!objectData) return;
@@ -819,6 +823,19 @@ export function ObjectExplorer({
   }
   const activeHeroImage = selectedGalleryUrl ?? galleryUrls[0] ?? FALLBACK_FOOD_IMG;
 
+  if (isEditMode && isSiteAdmin) {
+    return (
+      <ObjectEditModeShell
+        objectData={objectData}
+        sortedListItems={sortedItems}
+        posts={posts}
+        onExitEditMode={() => setIsEditMode(false)}
+        onObjectUpdated={() => setReloadNonce((n) => n + 1)}
+        onWriteReview={handleWriteReview}
+      />
+    );
+  }
+
   // ============================================================================
   // 1. LIST OBJECT LAYOUT (Matches hivecooking.com .Checklist 1:1)
   // ============================================================================
@@ -860,10 +877,10 @@ export function ObjectExplorer({
                 </>
               ) : null}
             </div>
-            {username ? (
+            {isSiteAdmin ? (
               <button
                 type="button"
-                onClick={() => setEditModalOpen(true)}
+                onClick={() => setIsEditMode(true)}
                 className="ml-3 h-[30px] cursor-pointer rounded-[4px] border border-[#e9e7e7] bg-white px-[15px] text-[16px] font-normal text-[rgba(0,0,0,0.65)] hover:border-[#af3d36]"
               >
                 Edit
@@ -875,13 +892,6 @@ export function ObjectExplorer({
             Earns commissions on purchases
           </div>
         </div>
-
-        <ObjectEditModal
-          objectId={objectData.object_id}
-          objectName={displayName}
-          open={editModalOpen}
-          onClose={() => setEditModalOpen(false)}
-        />
 
         {/* 5-Column Flex Wrap Grid (.Checklist__list) */}
         {sortedItems.length > 0 ? (
@@ -1061,32 +1071,29 @@ export function ObjectExplorer({
                 >
                   {isFollowingObj ? 'Following' : 'Follow'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setEditModalOpen(true)}
-                  className="cursor-pointer rounded-[4px] border border-[#d9d9d9] bg-white px-3.5 py-1 text-xs text-[#353535] hover:border-[#af3d36]"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  aria-label="Favorite"
-                  onClick={() => void handleToggleFavorite()}
-                  className={`ml-1 cursor-pointer text-lg hover:text-[#af3d36] ${
-                    isFavorited ? 'text-[#af3d36]' : 'text-[#99aab5]'
-                  }`}
-                >
-                  ♥
-                </button>
+                {isSiteAdmin ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditMode(true)}
+                      className="cursor-pointer rounded-[4px] border border-[#d9d9d9] bg-white px-3.5 py-1 text-xs text-[#353535] hover:border-[#af3d36]"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Favorite"
+                      onClick={() => void handleToggleFavorite()}
+                      className={`ml-1 cursor-pointer text-lg hover:text-[#af3d36] ${
+                        isFavorited ? 'text-[#af3d36]' : 'text-[#99aab5]'
+                      }`}
+                    >
+                      ♥
+                    </button>
+                  </>
+                ) : null}
               </div>
             ) : null}
-
-            <ObjectEditModal
-              objectId={objectData.object_id}
-              objectName={displayName}
-              open={editModalOpen}
-              onClose={() => setEditModalOpen(false)}
-            />
 
             {actionStatus ? (
               <p className="mb-2 text-xs font-medium text-[#af3d36]">{actionStatus}</p>
@@ -1769,32 +1776,29 @@ export function ObjectExplorer({
               >
                 {isFollowingObj ? 'Following' : 'Follow'}
               </button>
-              <button
-                type="button"
-                onClick={() => setEditModalOpen(true)}
-                className="cursor-pointer rounded-[4px] border border-[#d9d9d9] bg-white px-3.5 py-1 text-xs text-[#353535] hover:border-[#af3d36]"
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                aria-label="Favorite"
-                onClick={() => void handleToggleFavorite()}
-                className={`ml-1 cursor-pointer text-lg hover:text-[#af3d36] ${
-                  isFavorited ? 'text-[#af3d36]' : 'text-[#99aab5]'
-                }`}
-              >
-                ♥
-              </button>
+              {isSiteAdmin ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditMode(true)}
+                    className="cursor-pointer rounded-[4px] border border-[#d9d9d9] bg-white px-3.5 py-1 text-xs text-[#353535] hover:border-[#af3d36]"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Favorite"
+                    onClick={() => void handleToggleFavorite()}
+                    className={`ml-1 cursor-pointer text-lg hover:text-[#af3d36] ${
+                      isFavorited ? 'text-[#af3d36]' : 'text-[#99aab5]'
+                    }`}
+                  >
+                    ♥
+                  </button>
+                </>
+              ) : null}
             </div>
           ) : null}
-
-          <ObjectEditModal
-            objectId={objectData.object_id}
-            objectName={displayName}
-            open={editModalOpen}
-            onClose={() => setEditModalOpen(false)}
-          />
 
           {actionStatus ? (
             <p className="mb-2 text-xs font-medium text-[#af3d36]">{actionStatus}</p>
